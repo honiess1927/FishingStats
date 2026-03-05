@@ -28,7 +28,7 @@ frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
 frame:Hide()
 
 -- 2) 静态 FontString 列表，用来显示总计
-local maxLines = 12
+local maxLines = 15
 local lineHeight = 16
 local lines = {}
 for i = 1, maxLines do
@@ -69,13 +69,15 @@ local function RefreshPanel()
   local row = 4
   -- 按数量排序
   local sortedFish = {}
+  local totalCount = 0
   for name, count in pairs(fishCounts) do
     table.insert(sortedFish, {name = name, count = count})
+    totalCount = totalCount + count
   end
   table.sort(sortedFish, function(a, b) return a.count > b.count end)
   for _, fish in ipairs(sortedFish) do
     if row > maxLines then break end
-    lines[row]:SetText( string.format("%-20s  × %3d", fish.name, fish.count) )
+    lines[row]:SetText( string.format("%-20s  × %3d    %d%%", fish.name, fish.count, fish.count / totalCount * 100) )
     row = row + 1
   end
 
@@ -154,7 +156,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
           end
         end
         if name then
-          fishCounts[name] = (fishCounts[name] or 0) + quantity
+          -- 如果是 杂项 或者垃圾，count 累加 1， 否则累加 quantity
+          fishCounts[name] = (fishCounts[name] or 0) + (name == "杂项" or name == "垃圾" and 1 or quantity)
           local price = priceCache[id] or Auctionator.API.v1.GetAuctionPriceByItemID(name, id) or 0
           local totalPrice = price * quantity
           print("钓到：" .. name .. "；累计：" .. fishCounts[name] .. " 价值: " .. GetCoinTextureString(totalPrice))
