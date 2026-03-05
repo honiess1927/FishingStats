@@ -1,0 +1,12 @@
+## Interface: 120001, 120000, 100107
+## Title: Fishing Stats
+## Notes: Tracks the types and counts of fish caught
+## Version: 0.1
+## SavedVariables: FishingStatsDB
+## OptionalDeps: Auctionator
+## LoadOnDemand: 0          -- 让它和 Auctionator 一起被载入
+
+FishSet.lua
+FishingSkillTracker.lua
+FishingStats.lua
+

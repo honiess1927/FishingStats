@@ -1,0 +1,67 @@
+local frame = CreateFrame("Frame")
+local fishCounts = {}
+local isFishing = false
+local FISH_ID_START, FISH_ID_END = 444796, 444803
+
+-- 注册事件
+frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+frame:RegisterEvent("LOOT_OPENED")
+frame:RegisterEvent("ADDON_LOADED")
+
+-- ⬅️ 创建小地图按钮
+local miniButton = CreateFrame("Button", "FishingStatsMiniMapButton", Minimap)
+miniButton:SetSize(32, 32)
+miniButton:SetFrameStrata("MEDIUM")
+miniButton:SetNormalTexture("Interface\\Icons\\inv_fishingpole_02")
+miniButton:SetPoint("TOPLEFT", Minimap, "BOTTOMLEFT", -10, -10)
+C_Timer.After(2, function()
+  if FishingStatsFrame then
+    print("✅ FishingStatsFrame 已成功载入")
+  else
+    print("❌ FishingStatsFrame 不存在，可能是 XML 未加载或未命名")
+  end
+end)
+
+miniButton:SetScript("OnClick", function()
+    if FishingStatsFrame:IsShown() then
+        FishingStatsFrame:Hide()
+    else
+        FishingStatsText:Clear()
+        FishingStatsText:AddMessage("🐟 当前统计如下：")
+        for name, count in pairs(fishCounts) do
+            FishingStatsText:AddMessage(name .. " × " .. count)
+        end
+        FishingStatsFrame:Show()
+    end
+end)
+
+-- 主事件处理
+frame:SetScript("OnEvent", function(self, event, ...)
+    if event == "UNIT_SPELLCAST_SUCCEEDED" then
+        local unit, _, spellID = ...
+        if unit == "player" and spellID == 131474 then
+            isFishing = true
+        end
+
+    elseif event == "LOOT_OPENED" and isFishing then
+        local numItems = GetNumLootItems()
+        for i = 1, numItems do
+            local itemLink = GetLootSlotLink(i)
+            if itemLink then
+                local itemID = tonumber(string.match(itemLink, "item:(%d+):"))
+                if itemID and itemID >= FISH_ID_START and itemID <= FISH_ID_END then
+                    local itemName = GetLootSlotInfo(i)
+                    fishCounts[itemName] = (fishCounts[itemName] or 0) + 1
+                    print("钓到：" .. itemName .. "，当前数量：" .. fishCounts[itemName])
+                end
+            end
+        end
+        isFishing = false
+
+    elseif event == "ADDON_LOADED" then
+        local addonName = ...
+        if addonName == "FishingStatsDemo" then
+            print("🎣 FishingStats 已加载，点击小地图图标查看统计")
+        end
+    end
+end)
