@@ -67,9 +67,15 @@ local function RefreshPanel()
 
   -- 按行写入数据
   local row = 4
+  -- 按数量排序
+  local sortedFish = {}
   for name, count in pairs(fishCounts) do
+    table.insert(sortedFish, {name = name, count = count})
+  end
+  table.sort(sortedFish, function(a, b) return a.count > b.count end)
+  for _, fish in ipairs(sortedFish) do
     if row > maxLines then break end
-    lines[row]:SetText( string.format("%-20s  × %3d", name, count) )
+    lines[row]:SetText( string.format("%-20s  × %3d", fish.name, fish.count) )
     row = row + 1
   end
 
