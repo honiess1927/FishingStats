@@ -156,8 +156,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
           end
         end
         if name then
-          -- 如果是 杂项 或者垃圾，count 累加 1， 否则累加 quantity
-          fishCounts[name] = (fishCounts[name] or 0) + (name == "杂项" or name == "垃圾" and 1 or quantity)
+          -- 如果是 杂项 或者垃圾，count 累加 1， 否则累加 quantity    
+          local count = quantity
+          if (name == "杂项" or name == "垃圾") then
+            count = 1
+          end
+          fishCounts[name] = (fishCounts[name] or 0) + count
           local price = priceCache[id] or Auctionator.API.v1.GetAuctionPriceByItemID(name, id) or 0
           local totalPrice = price * quantity
           print("钓到：" .. name .. "；累计：" .. fishCounts[name] .. " 价值: " .. GetCoinTextureString(totalPrice))
