@@ -200,13 +200,14 @@ regionFrame.overviewContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", 
 regionFrame.detailsContent = CreateFrame("Frame", nil, regionFrame)
 regionFrame.detailsContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
 regionFrame.detailsContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
+regionFrame.regionOptions = {}
 
 regionFrame.overviewHeaders = {}
 local overviewHeaderConfig = {
   { key = "region", text = "Region", x = 0 },
-  { key = "count", text = "Catches", x = 180 },
-  { key = "total", text = "Total Earn", x = 270 },
-  { key = "hourly", text = "Hourly Earn", x = 385 },
+  { key = "count", text = "Catches", x = 120 },
+  { key = "total", text = "Total Earn", x = 200 },
+  { key = "hourly", text = "Hourly Earn", x = 325 },
 }
 
 for _, column in ipairs(overviewHeaderConfig) do
@@ -222,11 +223,11 @@ for i = 1, 12 do
   row.region = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
   row.region:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 0, -(20 + (i - 1) * 22))
   row.count = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.count:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 180, -(20 + (i - 1) * 22))
+  row.count:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 120, -(20 + (i - 1) * 22))
   row.total = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.total:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 270, -(20 + (i - 1) * 22))
+  row.total:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 200, -(20 + (i - 1) * 22))
   row.hourly = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.hourly:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 385, -(20 + (i - 1) * 22))
+  row.hourly:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 325, -(20 + (i - 1) * 22))
   regionFrame.overviewRows[i] = row
 end
 
@@ -238,18 +239,74 @@ regionFrame.detailsTitle = regionFrame.detailsContent:CreateFontString(nil, "ART
 regionFrame.detailsTitle:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, 0)
 regionFrame.detailsTitle:SetText("Region Details")
 
+regionFrame.dropdownLabel = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+regionFrame.dropdownLabel:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -28)
+regionFrame.dropdownLabel:SetText("Select Region")
+
+regionFrame.dropdown = CreateFrame("Frame", "FishingStatsRegionDropdown", regionFrame.detailsContent, "UIDropDownMenuTemplate")
+regionFrame.dropdown:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", -16, -42)
+
 regionFrame.detailsSummary = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-regionFrame.detailsSummary:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -30)
+regionFrame.detailsSummary:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -78)
 regionFrame.detailsSummary:SetJustifyH("LEFT")
 
-regionFrame.detailsHint = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-regionFrame.detailsHint:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -90)
-regionFrame.detailsHint:SetJustifyH("LEFT")
-regionFrame.detailsHint:SetText("Dropdown and per-item breakdown will be added in the next phase.")
+regionFrame.detailsHeaders = {}
+local detailsHeaderConfig = {
+  { key = "item", text = "Item", x = 0 },
+  { key = "count", text = "Count", x = 120 },
+  { key = "percent", text = "%", x = 205 },
+  { key = "total", text = "Total Earn", x = 260 },
+  { key = "hourly", text = "Hourly Earn", x = 345 },
+}
+
+for _, column in ipairs(detailsHeaderConfig) do
+  local header = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  header:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", column.x, -98)
+  header:SetText(column.text)
+  regionFrame.detailsHeaders[column.key] = header
+end
+
+regionFrame.detailRows = {}
+for i = 1, 10 do
+  local row = {}
+  local yOffset = -(120 + (i - 1) * 20)
+  row.item = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.item:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, yOffset)
+  row.count = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.count:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 120, yOffset)
+  row.percent = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.percent:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 205, yOffset)
+  row.total = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.total:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 260, yOffset)
+  row.hourly = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.hourly:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 345, yOffset)
+  regionFrame.detailRows[i] = row
+end
 
 regionFrame.detailsEmptyText = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-regionFrame.detailsEmptyText:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -30)
+regionFrame.detailsEmptyText:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -78)
 regionFrame.detailsEmptyText:SetText("No regional data recorded yet.")
+
+local function SetSelectedRegion(regionName)
+  regionFrame.selectedRegion = regionName
+  UIDropDownMenu_SetText(regionFrame.dropdown, regionName or "Select Region")
+end
+
+local RefreshRegionDetails
+
+UIDropDownMenu_SetWidth(regionFrame.dropdown, 180)
+UIDropDownMenu_Initialize(regionFrame.dropdown, function(self, level)
+  for _, regionName in ipairs(regionFrame.regionOptions) do
+    local info = UIDropDownMenu_CreateInfo()
+    info.text = regionName
+    info.checked = regionName == regionFrame.selectedRegion
+    info.func = function()
+      SetSelectedRegion(regionName)
+      RefreshRegionDetails()
+    end
+    UIDropDownMenu_AddButton(info, level)
+  end
+end)
 
 local function SetRegionTab(tabName)
   regionFrame.activeTab = tabName
@@ -269,8 +326,21 @@ end
 
 local function RefreshRegionOverview()
   local overviewData = Addon.GetRegionOverviewData()
+  local selectedRegionIsValid = false
 
-  regionFrame.selectedRegion = overviewData[1] and overviewData[1].regionName or nil
+  wipe(regionFrame.regionOptions)
+  for _, entry in ipairs(overviewData) do
+    table.insert(regionFrame.regionOptions, entry.regionName)
+    if entry.regionName == regionFrame.selectedRegion then
+      selectedRegionIsValid = true
+    end
+  end
+
+  if not selectedRegionIsValid then
+    SetSelectedRegion(overviewData[1] and overviewData[1].regionName or nil)
+  else
+    SetSelectedRegion(regionFrame.selectedRegion)
+  end
 
   for _, row in ipairs(regionFrame.overviewRows) do
     row.region:SetText("")
@@ -299,13 +369,20 @@ local function RefreshRegionOverview()
   end
 end
 
-local function RefreshRegionDetails()
+RefreshRegionDetails = function()
   local selectedRegion = regionFrame.selectedRegion
+
+  for _, row in ipairs(regionFrame.detailRows) do
+    row.item:SetText("")
+    row.count:SetText("")
+    row.percent:SetText("")
+    row.total:SetText("")
+    row.hourly:SetText("")
+  end
 
   if not selectedRegion then
     regionFrame.detailsEmptyText:Show()
     regionFrame.detailsSummary:Hide()
-    regionFrame.detailsHint:Hide()
     return
   end
 
@@ -313,21 +390,32 @@ local function RefreshRegionDetails()
   if not metrics or metrics.totalCount == 0 then
     regionFrame.detailsEmptyText:Show()
     regionFrame.detailsSummary:Hide()
-    regionFrame.detailsHint:Hide()
     return
   end
 
   regionFrame.detailsEmptyText:Hide()
   regionFrame.detailsSummary:Show()
-  regionFrame.detailsHint:Show()
   regionFrame.detailsSummary:SetText(string.format(
-    "Region: %s\nCatches: %d\nTracked item types: %d\nTotal Earn: %s\nHourly Earn: %s",
+    "Region: %s   Catches: %d   Item Types: %d   Total Earn: %s   Hourly Earn: %s",
     metrics.regionName,
     metrics.totalCount,
     #(metrics.items or {}),
     FormatCoins(metrics.totalEarn),
     FormatCoins(metrics.estimatedHourlyEarn)
   ))
+
+  for i, entry in ipairs(metrics.items or {}) do
+    local row = regionFrame.detailRows[i]
+    if not row then
+      break
+    end
+
+    row.item:SetText(entry.itemName)
+    row.count:SetText(tostring(entry.count))
+    row.percent:SetText(string.format("%.1f%%", entry.catchPercent))
+    row.total:SetText(FormatCoins(entry.totalEarn))
+    row.hourly:SetText(FormatCoins(entry.estimatedHourlyEarn))
+  end
 end
 
 local function RefreshRegionWindow()
