@@ -47,10 +47,13 @@ local buffItemIDs = {117405, 133755, 88535, 241148}
 local MAX_COL = 4              -- 每行最多 4 个
 local BTN_SIZE = 28
 local BTN_PADDING = 4
+local FormatCoins
   
   -------- REFRESH PANEL -----
 local function RefreshPanel()
   local fishCounts = FishingStatsDB.fishCounts
+  local currentRegionName = Addon.GetCurrentFishingRegion()
+  local currentRegionMetrics = Addon.GetRegionDetailData(currentRegionName)
   -- 清空旧内容
   for i = 1, maxLines do
     lines[i]:SetText("")
@@ -60,13 +63,14 @@ local function RefreshPanel()
   lines[1]:SetText(" 钓鱼统计（总计）")
   local total, max, bonus = Addon.GetFishingSkillBonus()
   lines[2]:SetText(string.format("钓鱼技能：%d（+%d）", total, bonus))
-  
-  lines[3]:SetText(GetCoinTextureString(FishingStatsDB.earn))
+
+  lines[3]:SetText(string.format("%s 时薪：%s", currentRegionMetrics.regionName, FormatCoins(currentRegionMetrics.estimatedHourlyEarn)))
+  lines[4]:SetText(string.format("总收益：%s", GetCoinTextureString(FishingStatsDB.earn)))
 
 
 
   -- 按行写入数据
-  local row = 4
+  local row = 5
   -- 按数量排序
   local sortedFish = {}
   local totalCount = 0
@@ -82,8 +86,8 @@ local function RefreshPanel()
   end
 
   -- 如果没有数据，提示一条
-  if row == 2 then
-    lines[2]:SetText("|cffff0000尚无数据|r")
+  if row == 5 then
+    lines[5]:SetText("|cffff0000尚无数据|r")
   end
 
   frame:Show()
@@ -115,7 +119,7 @@ btn:SetScript("OnClick", showhide)
 local useBtn = CreateFrame("Button", "FishingStatsUseButton", UIParent, "SecureActionButtonTemplate")
 useBtn:SetAttribute("type", "item")
 
-local function FormatCoins(value)
+FormatCoins = function(value)
   local amount = math.floor((value or 0) + 0.5)
   return GetCoinTextureString(amount)
 end
@@ -138,24 +142,6 @@ local function GetCachedItemPrice(itemID)
   end
 
   return 0
-end
-
-local function LogRegionCatch(regionName, itemName)
-  local metrics = Addon.GetRegionDetailData(regionName)
-  local itemMetrics = nil
-
-  for _, entry in ipairs(metrics.items or {}) do
-    if entry.itemName == itemName then
-      itemMetrics = entry
-      break
-    end
-  end
-
-  print("[FishingStats][Region] 区域：" .. metrics.regionName .. "；区域累计：" .. metrics.totalCount .. "；区域总收益：" .. FormatCoins(metrics.totalEarn) .. "；区域时薪：" .. FormatCoins(metrics.estimatedHourlyEarn))
-
-  if itemMetrics then
-    print(string.format("[FishingStats][Region] 条目：%s；数量：%d；占比：%.1f%%；条目总收益：%s；条目时薪：%s", itemMetrics.itemName, itemMetrics.count, itemMetrics.catchPercent, FormatCoins(itemMetrics.totalEarn), FormatCoins(itemMetrics.estimatedHourlyEarn)))
-  end
 end
 
 local regionFrame = CreateFrame("Frame", "FishingStatsRegionFrame", UIParent, "BackdropTemplate")
@@ -266,21 +252,32 @@ for _, column in ipairs(detailsHeaderConfig) do
   regionFrame.detailsHeaders[column.key] = header
 end
 
+regionFrame.detailsScrollFrame = CreateFrame("ScrollFrame", "FishingStatsRegionDetailsScrollFrame", regionFrame.detailsContent, "UIPanelScrollFrameTemplate")
+regionFrame.detailsScrollFrame:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -116)
+regionFrame.detailsScrollFrame:SetPoint("BOTTOMRIGHT", regionFrame.detailsContent, "BOTTOMRIGHT", -28, 6)
+
+regionFrame.detailsScrollChild = CreateFrame("Frame", nil, regionFrame.detailsScrollFrame)
+regionFrame.detailsScrollChild:SetSize(430, 1)
+regionFrame.detailsScrollFrame:SetScrollChild(regionFrame.detailsScrollChild)
+
 regionFrame.detailRows = {}
-for i = 1, 10 do
-  local row = {}
-  local yOffset = -(120 + (i - 1) * 20)
-  row.item = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.item:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, yOffset)
-  row.count = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.count:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 100, yOffset)
-  row.percent = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.percent:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 150, yOffset)
-  row.total = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.total:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 220, yOffset)
-  row.hourly = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.hourly:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 305, yOffset)
-  regionFrame.detailRows[i] = row
+
+local function EnsureDetailRows(count)
+  for i = #regionFrame.detailRows + 1, count do
+    local row = {}
+    local yOffset = -((i - 1) * 20)
+    row.item = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.item:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 0, yOffset)
+    row.count = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.count:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 100, yOffset)
+    row.percent = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.percent:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 150, yOffset)
+    row.total = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.total:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 220, yOffset)
+    row.hourly = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.hourly:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 305, yOffset)
+    regionFrame.detailRows[i] = row
+  end
 end
 
 regionFrame.detailsEmptyText = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
@@ -390,10 +387,12 @@ RefreshRegionDetails = function()
     row.total:SetText("")
     row.hourly:SetText("")
   end
+  regionFrame.detailsScrollFrame:SetVerticalScroll(0)
 
   if not selectedRegion then
     regionFrame.detailsEmptyText:Show()
     regionFrame.detailsSummary:Hide()
+    regionFrame.detailsScrollFrame:Hide()
     return
   end
 
@@ -401,11 +400,13 @@ RefreshRegionDetails = function()
   if not metrics or metrics.totalCount == 0 then
     regionFrame.detailsEmptyText:Show()
     regionFrame.detailsSummary:Hide()
+    regionFrame.detailsScrollFrame:Hide()
     return
   end
 
   regionFrame.detailsEmptyText:Hide()
   regionFrame.detailsSummary:Show()
+  regionFrame.detailsScrollFrame:Show()
   regionFrame.detailsSummary:SetText(string.format(
     "Region: %s   Catches: %d   Item Types: %d   Total Earn: %s   Hourly Earn: %s",
     metrics.regionName,
@@ -415,11 +416,11 @@ RefreshRegionDetails = function()
     FormatCoins(metrics.estimatedHourlyEarn)
   ))
 
+  EnsureDetailRows(#(metrics.items or {}))
+  regionFrame.detailsScrollChild:SetHeight(math.max(1, #(metrics.items or {}) * 20))
+
   for i, entry in ipairs(metrics.items or {}) do
     local row = regionFrame.detailRows[i]
-    if not row then
-      break
-    end
 
     row.item:SetText(entry.itemName)
     row.count:SetText(tostring(entry.count))
@@ -497,7 +498,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
 
   elseif event == "LOOT_OPENED" and isFishing then
     local regionName = Addon.GetCurrentFishingRegion()
-    print("[FishingStats][Region] 本次钓鱼区域：" .. regionName)
     local n = GetNumLootItems()
     for i = 1, n do
       local icon, name, quantity, _, quality = GetLootSlotInfo(i)
@@ -526,7 +526,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
           print("钓到：" .. name .. "；累计：" .. fishCounts[name] .. " 价值: " .. GetCoinTextureString(totalPrice))
           FishingStatsDB.earn = FishingStatsDB.earn + totalPrice
           Addon.RecordRegionCatch(regionName, id, name, count, totalPrice)
-          LogRegionCatch(regionName, name)
           if regionFrame:IsShown() then
             RefreshRegionWindow()
           end
