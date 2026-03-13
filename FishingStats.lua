@@ -253,10 +253,10 @@ regionFrame.detailsSummary:SetJustifyH("LEFT")
 regionFrame.detailsHeaders = {}
 local detailsHeaderConfig = {
   { key = "item", text = "Item", x = 0 },
-  { key = "count", text = "Count", x = 120 },
-  { key = "percent", text = "%", x = 205 },
-  { key = "total", text = "Total Earn", x = 260 },
-  { key = "hourly", text = "Hourly Earn", x = 345 },
+  { key = "count", text = "Count", x = 100 },
+  { key = "percent", text = "%", x = 150 },
+  { key = "total", text = "Total Earn", x = 220 },
+  { key = "hourly", text = "Hourly Earn", x = 305 },
 }
 
 for _, column in ipairs(detailsHeaderConfig) do
@@ -273,13 +273,13 @@ for i = 1, 10 do
   row.item = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
   row.item:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, yOffset)
   row.count = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.count:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 120, yOffset)
+  row.count:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 100, yOffset)
   row.percent = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.percent:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 205, yOffset)
+  row.percent:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 150, yOffset)
   row.total = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.total:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 260, yOffset)
+  row.total:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 220, yOffset)
   row.hourly = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.hourly:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 345, yOffset)
+  row.hourly:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 305, yOffset)
   regionFrame.detailRows[i] = row
 end
 
@@ -290,6 +290,25 @@ regionFrame.detailsEmptyText:SetText("No regional data recorded yet.")
 local function SetSelectedRegion(regionName)
   regionFrame.selectedRegion = regionName
   UIDropDownMenu_SetText(regionFrame.dropdown, regionName or "Select Region")
+end
+
+local function SyncRegionOptions(overviewData)
+  local selectedRegionIsValid = false
+
+  wipe(regionFrame.regionOptions)
+  for _, entry in ipairs(overviewData) do
+    table.insert(regionFrame.regionOptions, entry.regionName)
+    if entry.regionName == regionFrame.selectedRegion then
+      selectedRegionIsValid = true
+    end
+  end
+
+  if regionFrame.selectedRegion and not selectedRegionIsValid then
+    table.insert(regionFrame.regionOptions, 1, regionFrame.selectedRegion)
+    selectedRegionIsValid = true
+  end
+
+  return selectedRegionIsValid
 end
 
 local RefreshRegionDetails
@@ -326,15 +345,7 @@ end
 
 local function RefreshRegionOverview()
   local overviewData = Addon.GetRegionOverviewData()
-  local selectedRegionIsValid = false
-
-  wipe(regionFrame.regionOptions)
-  for _, entry in ipairs(overviewData) do
-    table.insert(regionFrame.regionOptions, entry.regionName)
-    if entry.regionName == regionFrame.selectedRegion then
-      selectedRegionIsValid = true
-    end
-  end
+  local selectedRegionIsValid = SyncRegionOptions(overviewData)
 
   if not selectedRegionIsValid then
     SetSelectedRegion(overviewData[1] and overviewData[1].regionName or nil)
@@ -424,7 +435,16 @@ local function RefreshRegionWindow()
   SetRegionTab(regionFrame.activeTab or "overview")
 end
 
-local function ShowRegionWindow()
+local function ShowRegionOverviewWindow()
+  regionFrame.activeTab = "overview"
+  RefreshRegionWindow()
+  regionFrame:Show()
+end
+
+local function ShowCurrentRegionWindow()
+  local currentRegion = Addon.GetCurrentFishingRegion()
+  SetSelectedRegion(currentRegion)
+  regionFrame.activeTab = "details"
   RefreshRegionWindow()
   regionFrame:Show()
 end
@@ -440,11 +460,17 @@ end)
 
 SetRegionTab("overview")
 
-local regionButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-regionButton:SetSize(72, 24)
-regionButton:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, -18)
-regionButton:SetText("Regions")
-regionButton:SetScript("OnClick", ShowRegionWindow)
+local overviewButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+overviewButton:SetSize(72, 24)
+overviewButton:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, -18)
+overviewButton:SetText("Overview")
+overviewButton:SetScript("OnClick", ShowRegionOverviewWindow)
+
+local currentRegionButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+currentRegionButton:SetSize(72, 24)
+currentRegionButton:SetPoint("TOPLEFT", overviewButton, "BOTTOMLEFT", 0, -6)
+currentRegionButton:SetText("Region")
+currentRegionButton:SetScript("OnClick", ShowCurrentRegionWindow)
 
 
 -- ------------- 事件处理 -------------
