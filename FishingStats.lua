@@ -158,6 +158,206 @@ local function LogRegionCatch(regionName, itemName)
   end
 end
 
+local regionFrame = CreateFrame("Frame", "FishingStatsRegionFrame", UIParent, "BackdropTemplate")
+regionFrame:SetSize(500, 420)
+regionFrame:SetPoint("CENTER", UIParent, "CENTER", 240, 0)
+regionFrame:SetBackdrop({
+  bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+  edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+  tile     = true, tileSize = 32, edgeSize = 32,
+  insets   = { left=10, right=10, top=10, bottom=10 },
+})
+regionFrame:EnableMouse(true)
+regionFrame:SetMovable(true)
+regionFrame:RegisterForDrag("LeftButton")
+regionFrame:SetScript("OnDragStart", regionFrame.StartMoving)
+regionFrame:SetScript("OnDragStop", regionFrame.StopMovingOrSizing)
+regionFrame:Hide()
+regionFrame.activeTab = "overview"
+regionFrame.selectedRegion = nil
+
+regionFrame.title = regionFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
+regionFrame.title:SetPoint("TOP", regionFrame, "TOP", 0, -18)
+regionFrame.title:SetText("Region Earnings")
+
+regionFrame.closeButton = CreateFrame("Button", nil, regionFrame, "UIPanelCloseButton")
+regionFrame.closeButton:SetPoint("TOPRIGHT", regionFrame, "TOPRIGHT", -5, -5)
+
+regionFrame.overviewTab = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
+regionFrame.overviewTab:SetSize(110, 24)
+regionFrame.overviewTab:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -48)
+regionFrame.overviewTab:SetText("Overview")
+
+regionFrame.detailsTab = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
+regionFrame.detailsTab:SetSize(110, 24)
+regionFrame.detailsTab:SetPoint("LEFT", regionFrame.overviewTab, "RIGHT", 8, 0)
+regionFrame.detailsTab:SetText("Details")
+
+regionFrame.overviewContent = CreateFrame("Frame", nil, regionFrame)
+regionFrame.overviewContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
+regionFrame.overviewContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
+
+regionFrame.detailsContent = CreateFrame("Frame", nil, regionFrame)
+regionFrame.detailsContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
+regionFrame.detailsContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
+
+regionFrame.overviewHeaders = {}
+local overviewHeaderConfig = {
+  { key = "region", text = "Region", x = 0 },
+  { key = "count", text = "Catches", x = 180 },
+  { key = "total", text = "Total Earn", x = 270 },
+  { key = "hourly", text = "Hourly Earn", x = 385 },
+}
+
+for _, column in ipairs(overviewHeaderConfig) do
+  local header = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  header:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", column.x, 0)
+  header:SetText(column.text)
+  regionFrame.overviewHeaders[column.key] = header
+end
+
+regionFrame.overviewRows = {}
+for i = 1, 12 do
+  local row = {}
+  row.region = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.region:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 0, -(20 + (i - 1) * 22))
+  row.count = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.count:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 180, -(20 + (i - 1) * 22))
+  row.total = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.total:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 270, -(20 + (i - 1) * 22))
+  row.hourly = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.hourly:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 385, -(20 + (i - 1) * 22))
+  regionFrame.overviewRows[i] = row
+end
+
+regionFrame.overviewEmptyText = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+regionFrame.overviewEmptyText:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 0, -28)
+regionFrame.overviewEmptyText:SetText("No regional data recorded yet.")
+
+regionFrame.detailsTitle = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+regionFrame.detailsTitle:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, 0)
+regionFrame.detailsTitle:SetText("Region Details")
+
+regionFrame.detailsSummary = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+regionFrame.detailsSummary:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -30)
+regionFrame.detailsSummary:SetJustifyH("LEFT")
+
+regionFrame.detailsHint = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+regionFrame.detailsHint:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -90)
+regionFrame.detailsHint:SetJustifyH("LEFT")
+regionFrame.detailsHint:SetText("Dropdown and per-item breakdown will be added in the next phase.")
+
+regionFrame.detailsEmptyText = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+regionFrame.detailsEmptyText:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -30)
+regionFrame.detailsEmptyText:SetText("No regional data recorded yet.")
+
+local function SetRegionTab(tabName)
+  regionFrame.activeTab = tabName
+
+  if tabName == "overview" then
+    regionFrame.overviewContent:Show()
+    regionFrame.detailsContent:Hide()
+    regionFrame.overviewTab:Disable()
+    regionFrame.detailsTab:Enable()
+  else
+    regionFrame.overviewContent:Hide()
+    regionFrame.detailsContent:Show()
+    regionFrame.overviewTab:Enable()
+    regionFrame.detailsTab:Disable()
+  end
+end
+
+local function RefreshRegionOverview()
+  local overviewData = Addon.GetRegionOverviewData()
+
+  regionFrame.selectedRegion = overviewData[1] and overviewData[1].regionName or nil
+
+  for _, row in ipairs(regionFrame.overviewRows) do
+    row.region:SetText("")
+    row.count:SetText("")
+    row.total:SetText("")
+    row.hourly:SetText("")
+  end
+
+  if #overviewData == 0 then
+    regionFrame.overviewEmptyText:Show()
+    return
+  end
+
+  regionFrame.overviewEmptyText:Hide()
+
+  for i, entry in ipairs(overviewData) do
+    local row = regionFrame.overviewRows[i]
+    if not row then
+      break
+    end
+
+    row.region:SetText(entry.regionName)
+    row.count:SetText(tostring(entry.totalCount))
+    row.total:SetText(FormatCoins(entry.totalEarn))
+    row.hourly:SetText(FormatCoins(entry.estimatedHourlyEarn))
+  end
+end
+
+local function RefreshRegionDetails()
+  local selectedRegion = regionFrame.selectedRegion
+
+  if not selectedRegion then
+    regionFrame.detailsEmptyText:Show()
+    regionFrame.detailsSummary:Hide()
+    regionFrame.detailsHint:Hide()
+    return
+  end
+
+  local metrics = Addon.GetRegionDetailData(selectedRegion)
+  if not metrics or metrics.totalCount == 0 then
+    regionFrame.detailsEmptyText:Show()
+    regionFrame.detailsSummary:Hide()
+    regionFrame.detailsHint:Hide()
+    return
+  end
+
+  regionFrame.detailsEmptyText:Hide()
+  regionFrame.detailsSummary:Show()
+  regionFrame.detailsHint:Show()
+  regionFrame.detailsSummary:SetText(string.format(
+    "Region: %s\nCatches: %d\nTracked item types: %d\nTotal Earn: %s\nHourly Earn: %s",
+    metrics.regionName,
+    metrics.totalCount,
+    #(metrics.items or {}),
+    FormatCoins(metrics.totalEarn),
+    FormatCoins(metrics.estimatedHourlyEarn)
+  ))
+end
+
+local function RefreshRegionWindow()
+  RefreshRegionOverview()
+  RefreshRegionDetails()
+  SetRegionTab(regionFrame.activeTab or "overview")
+end
+
+local function ShowRegionWindow()
+  RefreshRegionWindow()
+  regionFrame:Show()
+end
+
+regionFrame.overviewTab:SetScript("OnClick", function()
+  SetRegionTab("overview")
+end)
+
+regionFrame.detailsTab:SetScript("OnClick", function()
+  RefreshRegionDetails()
+  SetRegionTab("details")
+end)
+
+SetRegionTab("overview")
+
+local regionButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+regionButton:SetSize(72, 24)
+regionButton:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, -18)
+regionButton:SetText("Regions")
+regionButton:SetScript("OnClick", ShowRegionWindow)
+
 
 -- ------------- 事件处理 -------------
 frame:RegisterEvent("ADDON_LOADED")
@@ -213,6 +413,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
           FishingStatsDB.earn = FishingStatsDB.earn + totalPrice
           Addon.RecordRegionCatch(regionName, id, name, count, totalPrice)
           LogRegionCatch(regionName, name)
+          if regionFrame:IsShown() then
+            RefreshRegionWindow()
+          end
           RefreshPanel()
         end
         if id == 220152 then
