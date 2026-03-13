@@ -115,6 +115,49 @@ btn:SetScript("OnClick", showhide)
 local useBtn = CreateFrame("Button", "FishingStatsUseButton", UIParent, "SecureActionButtonTemplate")
 useBtn:SetAttribute("type", "item")
 
+local function FormatCoins(value)
+  local amount = math.floor((value or 0) + 0.5)
+  return GetCoinTextureString(amount)
+end
+
+local function GetCachedItemPrice(itemID)
+  if not itemID then
+    return 0
+  end
+
+  if priceCache[itemID] then
+    return priceCache[itemID]
+  end
+
+  if Auctionator and Auctionator.API and Auctionator.API.v1 then
+    local price = Auctionator.API.v1.GetAuctionPriceByItemID(name, itemID)
+    if price then
+      priceCache[itemID] = price
+      return price
+    end
+  end
+
+  return 0
+end
+
+local function LogRegionCatch(regionName, itemName)
+  local metrics = Addon.GetRegionDetailData(regionName)
+  local itemMetrics = nil
+
+  for _, entry in ipairs(metrics.items or {}) do
+    if entry.itemName == itemName then
+      itemMetrics = entry
+      break
+    end
+  end
+
+  print("[FishingStats][Region] 区域：" .. metrics.regionName .. "；区域累计：" .. metrics.totalCount .. "；区域总收益：" .. FormatCoins(metrics.totalEarn) .. "；区域时薪：" .. FormatCoins(metrics.estimatedHourlyEarn))
+
+  if itemMetrics then
+    print(string.format("[FishingStats][Region] 条目：%s；数量：%d；占比：%.1f%%；条目总收益：%s；条目时薪：%s", itemMetrics.itemName, itemMetrics.count, itemMetrics.catchPercent, FormatCoins(itemMetrics.totalEarn), FormatCoins(itemMetrics.estimatedHourlyEarn)))
+  end
+end
+
 
 -- ------------- 事件处理 -------------
 frame:RegisterEvent("ADDON_LOADED")
@@ -139,6 +182,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
     end
 
   elseif event == "LOOT_OPENED" and isFishing then
+    local regionName = Addon.GetCurrentFishingRegion()
+    print("[FishingStats][Region] 本次钓鱼区域：" .. regionName)
     local n = GetNumLootItems()
     for i = 1, n do
       local icon, name, quantity, _, quality = GetLootSlotInfo(i)
@@ -162,10 +207,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
             count = 1
           end
           fishCounts[name] = (fishCounts[name] or 0) + count
-          local price = priceCache[id] or Auctionator.API.v1.GetAuctionPriceByItemID(name, id) or 0
+          local price = GetCachedItemPrice(id)
           local totalPrice = price * quantity
           print("钓到：" .. name .. "；累计：" .. fishCounts[name] .. " 价值: " .. GetCoinTextureString(totalPrice))
           FishingStatsDB.earn = FishingStatsDB.earn + totalPrice
+          Addon.RecordRegionCatch(regionName, id, name, count, totalPrice)
+          LogRegionCatch(regionName, name)
           RefreshPanel()
         end
         if id == 220152 then
