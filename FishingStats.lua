@@ -1,16 +1,16 @@
 --[[
   FishingStats.lua
-  Pure Lua 版钓鱼统计插件
+  Pure Lua fishing stats addon
 --]]
 
--- ------------- 配置区 -------------
+-- ------------- Configuration -------------
 local name, Addon = ...
-local FISH_SPELL_ID = 131474                       -- 普通钓鱼技能 ID
+local FISH_SPELL_ID = 131474                       -- Base fishing skill spell ID
 
 local isFishing = false
 
--- ------------- UI 部分 -------------
--- 主面板
+-- ------------- UI -------------
+-- Main panel
 local frame = CreateFrame("Frame", "FishingStatsFrame", UIParent, "BackdropTemplate")
 frame:SetSize(150, 300)
 frame:SetPoint("CENTER")
@@ -27,24 +27,24 @@ frame:SetScript("OnDragStart", frame.StartMoving)
 frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
 frame:Hide()
 
--- 2) 静态 FontString 列表，用来显示总计
+-- Static FontString rows used to display totals
 local maxLines = 15
 local lineHeight = 16
 local lines = {}
 for i = 1, maxLines do
   local fs = frame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
   fs:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, - (20 + (i-1)*lineHeight))
-  fs:SetText("Hello")    -- 初始为空
+  fs:SetText("Hello")    -- Initial placeholder
   lines[i] = fs
 end
 
--- 创建按钮
--- … 在 frame 已创建之后 …
+-- Create buttons
+-- ... after the frame has been created ...
 ------------------------------------------------------------
--- 可换 Buff 物品清单
+-- Swappable buff item list
 ------------------------------------------------------------
 local buffItemIDs = {117405, 133755, 88535, 241148}
-local MAX_COL = 4              -- 每行最多 4 个
+local MAX_COL = 4              -- Up to 4 buttons per row
 local BTN_SIZE = 28
 local BTN_PADDING = 4
 local FormatCoins
@@ -54,24 +54,24 @@ local function RefreshPanel()
   local fishCounts = FishingStatsDB.fishCounts
   local currentRegionName = Addon.GetCurrentFishingRegion()
   local currentRegionMetrics = Addon.GetRegionDetailData(currentRegionName)
-  -- 清空旧内容
+  -- Clear previous content
   for i = 1, maxLines do
     lines[i]:SetText("")
   end
 
-  -- 写入标题
-  lines[1]:SetText(" 钓鱼统计（总计）")
+  -- Header
+  lines[1]:SetText(" Fishing Stats (Total)")
   local total, max, bonus = Addon.GetFishingSkillBonus()
-  lines[2]:SetText(string.format("钓鱼技能：%d（+%d）", total, bonus))
+  lines[2]:SetText(string.format("Fishing Skill: %d (+%d)", total, bonus))
 
-  lines[3]:SetText(string.format("%s 时薪：%s", currentRegionMetrics.regionName, FormatCoins(currentRegionMetrics.estimatedHourlyEarn)))
-  lines[4]:SetText(string.format("总收益：%s", GetCoinTextureString(FishingStatsDB.earn)))
+  lines[3]:SetText(string.format("%s Hourly: %s", currentRegionMetrics.regionName, FormatCoins(currentRegionMetrics.estimatedHourlyEarn)))
+  lines[4]:SetText(string.format("Total Earn: %s", GetCoinTextureString(FishingStatsDB.earn)))
 
 
 
-  -- 按行写入数据
+  -- Populate rows
   local row = 5
-  -- 按数量排序
+  -- Sort by count
   local sortedFish = {}
   local totalCount = 0
   for name, count in pairs(fishCounts) do
@@ -85,9 +85,9 @@ local function RefreshPanel()
     row = row + 1
   end
 
-  -- 如果没有数据，提示一条
+  -- Show an empty-state message if needed
   if row == 5 then
-    lines[5]:SetText("|cffff0000尚无数据|r")
+    lines[5]:SetText("|cffff0000No data yet|r")
   end
 
   frame:Show()
@@ -98,14 +98,14 @@ local function showhide()
   if frame:IsShown() then
     frame:Hide()
   else
-    -- 刷新内容
+    -- Refresh content
     RefreshPanel()
     Addon.PreloadFishPrices()
     frame:Show()
   end
 end
 
--- 小地图按钮
+-- Minimap button
 local btn = CreateFrame("Button", "FishingStatsMinimapButton", Minimap, "SecureActionButtonTemplate")
 btn:SetSize(32, 32)
 btn:SetFrameStrata("MEDIUM")
@@ -115,7 +115,7 @@ btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 btn:SetScript("OnClick", showhide)
 
 
--- ① 创建 Secure Button（只需做一次）
+-- Create the secure use button once
 local useBtn = CreateFrame("Button", "FishingStatsUseButton", UIParent, "SecureActionButtonTemplate")
 useBtn:SetAttribute("type", "item")
 
@@ -474,7 +474,7 @@ currentRegionButton:SetText("Region")
 currentRegionButton:SetScript("OnClick", ShowCurrentRegionWindow)
 
 
--- ------------- 事件处理 -------------
+-- ------------- Event handling -------------
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 frame:RegisterEvent("LOOT_OPENED")
@@ -484,7 +484,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
   if event == "ADDON_LOADED" then
     local addon = ...
     if addon == "FishingStats" then
-      print("🎣 FishingStats 已加载，点击小地图钓鱼图标查看统计。")
+      print("🎣 FishingStats loaded. Click the minimap fishing icon to view stats.")
     end
 
   elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
@@ -493,7 +493,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
       isFishing = true
 
     elseif event == "LOOT_OPENED" and isFishing then
-      -- 这段不会走到，因为 event 已经是 UNIT_SPELLCAST_SUCCEEDED
+      -- This branch is unreachable because event is already UNIT_SPELLCAST_SUCCEEDED
     end
 
   elseif event == "LOOT_OPENED" and isFishing then
@@ -515,7 +515,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
           end
         end
         if name then
-          -- 如果是 杂项 或者垃圾，count 累加 1， 否则累加 quantity    
+          -- Misc and junk count as 1; everything else uses the loot quantity
           local count = quantity
           if (name == "杂项" or name == "垃圾") then
             count = 1
@@ -523,7 +523,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
           fishCounts[name] = (fishCounts[name] or 0) + count
           local price = GetCachedItemPrice(id)
           local totalPrice = price * quantity
-          print("钓到：" .. name .. "；累计：" .. fishCounts[name] .. " 价值: " .. GetCoinTextureString(totalPrice))
+          print("Caught: " .. name .. "; Total: " .. fishCounts[name] .. " Value: " .. GetCoinTextureString(totalPrice))
           FishingStatsDB.earn = FishingStatsDB.earn + totalPrice
           Addon.RecordRegionCatch(regionName, id, name, count, totalPrice)
           if regionFrame:IsShown() then
@@ -534,9 +534,9 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if id == 220152 then
           if name then
             useBtn:SetAttribute("item", name)
-            -- 下面这行模拟一次点击，触发 secure action
+            -- Simulate one click to trigger the secure action
             useBtn:Click()
-            print("自动使用：", name)
+            print("Auto-used:", name)
           end
         end
       end
@@ -546,13 +546,13 @@ frame:SetScript("OnEvent", function(self, event, ...)
 end)
 
 ------------------------------------------------------------
--- 按钮创建
+-- Buff button creation
 ------------------------------------------------------------
 frame.buffButtons = {}
 
 for idx, itemID in ipairs(buffItemIDs) do
   --------------------------------------------------------
-  -- 位置信息：行、列
+  -- Position: row and column
   --------------------------------------------------------
   local row = math.floor((idx-1) / MAX_COL)    -- 0,1,2…
   local col = (idx-1) % MAX_COL                -- 0 ~ 3
@@ -576,18 +576,18 @@ for idx, itemID in ipairs(buffItemIDs) do
   btn:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
 
   --------------------------------------------------------
-  -- 背景图标
+  -- Background icon
   --------------------------------------------------------
   btn.icon = btn:CreateTexture(nil, "BACKGROUND")
   btn.icon:SetAllPoints(btn)
   if icon then btn.icon:SetTexture(icon) end
 
   --------------------------------------------------------
-  -- 右下角数量文字
+  -- Bottom-right count text
   --------------------------------------------------------
   btn.count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
   btn.count:SetPoint("BOTTOMRIGHT", -2, 2)
-  btn.count:SetText("")           -- 默认隐藏
+  btn.count:SetText("")           -- Hidden by default
 
   --------------------------------------------------------
   -- Tooltip
@@ -601,8 +601,7 @@ for idx, itemID in ipairs(buffItemIDs) do
   frame.buffButtons[itemID] = btn
 end
 
-------------------------------------------------------------
--- 刷新数量：>1 时显示数字，否则隐藏
+-- Refresh counts: show numbers only when quantity > 1
 ------------------------------------------------------------
 local function RefreshBuffCounts()
   for itemID, btn in pairs(frame.buffButtons) do
@@ -616,20 +615,19 @@ local function RefreshBuffCounts()
   end
 end
 
-------------------------------------------------------------
--- 事件驱动刷新
+-- Event-driven refresh
 ------------------------------------------------------------
 local f = CreateFrame("Frame")
-f:RegisterEvent("BAG_UPDATE_DELAYED")   -- 背包变动后批量刷新
+f:RegisterEvent("BAG_UPDATE_DELAYED")   -- Batch refresh after bag changes
 f:RegisterEvent("PLAYER_ENTERING_WORLD")
 f:SetScript("OnEvent", RefreshBuffCounts)
 
 
--- 定义 /fs 命令
+-- Define the /fs command
 SLASH_FS1 = "/fs"
 
 SlashCmdList["FS"] = function(msg)
-  -- msg 是 /fs 后面可能带的文本参数，这里我们忽略它，直接切换面板
+  -- Ignore any text after /fs and just toggle the panel
   showhide()
 end
 
