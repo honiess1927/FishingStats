@@ -195,6 +195,11 @@ regionFrame.detailsTab:SetSize(110, 24)
 regionFrame.detailsTab:SetPoint("LEFT", regionFrame.overviewTab, "RIGHT", 8, 0)
 regionFrame.detailsTab:SetText("Details")
 
+regionFrame.refreshPriceButton = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
+regionFrame.refreshPriceButton:SetSize(100, 24)
+regionFrame.refreshPriceButton:SetPoint("TOPRIGHT", regionFrame, "TOPRIGHT", -34, -48)
+regionFrame.refreshPriceButton:SetText("Refresh Price")
+
 regionFrame.overviewContent = CreateFrame("Frame", nil, regionFrame)
 regionFrame.overviewContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
 regionFrame.overviewContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
@@ -473,6 +478,10 @@ end)
 regionFrame.detailsTab:SetScript("OnClick", function()
   RefreshRegionDetails()
   SetRegionTab("details")
+end)
+
+regionFrame.refreshPriceButton:SetScript("OnClick", function()
+  SlashCmdList["FS_RELOADPRICES"]()
 end)
 
 SetRegionTab("overview")
