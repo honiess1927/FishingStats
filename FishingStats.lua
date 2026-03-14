@@ -414,6 +414,7 @@ RefreshRegionDetails = function()
     regionFrame.detailsEmptyText:Show()
     regionFrame.detailsSummary:Hide()
     regionFrame.detailsScrollFrame:Hide()
+    regionFrame.detailsTitle:SetText("Region Details")
     return
   end
 
@@ -422,15 +423,16 @@ RefreshRegionDetails = function()
     regionFrame.detailsEmptyText:Show()
     regionFrame.detailsSummary:Hide()
     regionFrame.detailsScrollFrame:Hide()
+    regionFrame.detailsTitle:SetText(selectedRegion)
     return
   end
 
   regionFrame.detailsEmptyText:Hide()
   regionFrame.detailsSummary:Show()
   regionFrame.detailsScrollFrame:Show()
+  regionFrame.detailsTitle:SetText(metrics.regionName)
   regionFrame.detailsSummary:SetText(string.format(
-    "Region: %s   Catches: %d   Item Types: %d   Total Earn: %s   Hourly Earn: %s",
-    metrics.regionName,
+    "Catches: %d   Item Types: %d   Total Earn: %s   Hourly Earn: %s",
     metrics.totalCount,
     #(metrics.items or {}),
     FormatCoins(metrics.totalEarn),
