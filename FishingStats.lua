@@ -113,7 +113,14 @@ btn:SetFrameStrata("MEDIUM")
 btn:SetPoint("TOPLEFT", Minimap, "BOTTOMLEFT", -10, -10)
 btn:SetNormalTexture("Interface\\Icons\\inv_fishingpole_02")
 btn:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-btn:SetScript("OnClick", showhide)
+btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+btn:SetScript("OnClick", function(_, mouseButton)
+  if mouseButton == "RightButton" then
+    SlashCmdList["FS_RELOADCOUNTS"]()
+  else
+    showhide()
+  end
+end)
 
 
 -- Create the secure use button once
