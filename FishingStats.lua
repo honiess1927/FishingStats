@@ -176,6 +176,8 @@ regionFrame:Hide()
 regionFrame.activeTab = "overview"
 regionFrame.selectedRegion = nil
 
+table.insert(UISpecialFrames, "FishingStatsRegionFrame")
+
 regionFrame.title = regionFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
 regionFrame.title:SetPoint("TOP", regionFrame, "TOP", 0, -18)
 regionFrame.title:SetText("Region Earnings")
@@ -477,7 +479,7 @@ SetRegionTab("overview")
 
 local overviewButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 overviewButton:SetSize(72, 24)
-overviewButton:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, -18)
+overviewButton:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, -2)
 overviewButton:SetText("Overview")
 overviewButton:SetScript("OnClick", ShowRegionOverviewWindow)
 
@@ -649,6 +651,10 @@ SLASH_FS_RELOADPRICES1 = "/fsrp"
 SlashCmdList["FS_RELOADPRICES"] = function()
   wipe(FishingStatsDB.prices)
   Addon.PreloadFishPrices()
+  RefreshPanel()
+  if regionFrame:IsShown() then
+    RefreshRegionWindow()
+  end
 end
 
 SLASH_FS_RELOADCOUNTS1 = "/fsr"

@@ -22,6 +22,30 @@ local function NormalizeRegionName(regionName)
   return normalized
 end
 
+local function IsZeroHourlyItem(itemName)
+  return itemName == "杂项" or itemName == "垃圾"
+end
+
+local function GetCurrentItemPrice(itemID)
+  if not itemID then
+    return 0
+  end
+
+  if priceCache[itemID] then
+    return priceCache[itemID]
+  end
+
+  if Auctionator and Auctionator.API and Auctionator.API.v1 then
+    local price = Auctionator.API.v1.GetAuctionPriceByItemID(name, itemID)
+    if price then
+      priceCache[itemID] = price
+      return price
+    end
+  end
+
+  return 0
+end
+
 local function SortRegionItems(items)
   table.sort(items, function(a, b)
     if a.estimatedHourlyEarn ~= b.estimatedHourlyEarn then
@@ -195,10 +219,14 @@ function Addon.GetRegionMetrics(regionName)
     local itemTotalEarn = itemStats.totalEarn or 0
     local itemCatchPercent = 0
     local itemHourlyEarn = 0
+    local itemHourlyValue = 0
 
     if totalCount > 0 then
       itemCatchPercent = itemCount / totalCount * 100
-      itemHourlyEarn = itemTotalEarn / totalCount * HOURLY_CATCH_TARGET
+      if not IsZeroHourlyItem(itemName) then
+        itemHourlyValue = GetCurrentItemPrice(itemStats.itemID) * itemCount
+        itemHourlyEarn = itemHourlyValue / totalCount * HOURLY_CATCH_TARGET
+      end
     end
 
     estimatedHourlyEarn = estimatedHourlyEarn + itemHourlyEarn
