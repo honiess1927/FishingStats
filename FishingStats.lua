@@ -48,6 +48,7 @@ local MAX_COL = 4              -- Up to 4 buttons per row
 local BTN_SIZE = 28
 local BTN_PADDING = 4
 local FormatCoins
+local FormatGoldOnlyCoins
   
   -------- REFRESH PANEL -----
 local function RefreshPanel()
@@ -64,7 +65,7 @@ local function RefreshPanel()
   local total, max, bonus = Addon.GetFishingSkillBonus()
   lines[2]:SetText(string.format("Fishing Skill: %d (+%d)", total, bonus))
 
-  lines[3]:SetText(string.format("%s Hourly: %s", currentRegionMetrics.regionName, FormatCoins(currentRegionMetrics.estimatedHourlyEarn)))
+  lines[3]:SetText(string.format("%s Hourly: %s", currentRegionMetrics.regionName, FormatGoldOnlyCoins(currentRegionMetrics.estimatedHourlyEarn)))
   lines[4]:SetText(string.format("Total Earn: %s", GetCoinTextureString(FishingStatsDB.earn)))
 
 
@@ -122,6 +123,12 @@ useBtn:SetAttribute("type", "item")
 FormatCoins = function(value)
   local amount = math.floor((value or 0) + 0.5)
   return GetCoinTextureString(amount)
+end
+
+FormatGoldOnlyCoins = function(value)
+  local amount = math.max(0, math.floor((value or 0) + 0.5))
+  local gold = math.floor(amount / 10000)
+  return GetCoinTextureString(gold * 10000)
 end
 
 local function GetCachedItemPrice(itemID)
