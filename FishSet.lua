@@ -195,6 +195,17 @@ function Addon.RecordRegionCatch(regionName, itemID, itemName, count, totalEarn)
   regionStats.totalEarn = (regionStats.totalEarn or 0) + safeEarn
 end
 
+function Addon.DeleteRegionStats(regionName)
+  local resolvedRegionName = NormalizeRegionName(regionName)
+
+  if not FishingStatsDB.regionStats[resolvedRegionName] then
+    return false
+  end
+
+  FishingStatsDB.regionStats[resolvedRegionName] = nil
+  return true
+end
+
 function Addon.GetRegionMetrics(regionName)
   local resolvedRegionName = NormalizeRegionName(regionName)
   local regionStats = FishingStatsDB.regionStats[resolvedRegionName]

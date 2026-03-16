@@ -253,6 +253,11 @@ regionFrame.dropdownLabel:SetText("Select Region")
 regionFrame.dropdown = CreateFrame("Frame", "FishingStatsRegionDropdown", regionFrame.detailsContent, "UIDropDownMenuTemplate")
 regionFrame.dropdown:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", -16, -42)
 
+regionFrame.clearRegionButton = CreateFrame("Button", nil, regionFrame.detailsContent, "UIPanelButtonTemplate")
+regionFrame.clearRegionButton:SetSize(100, 22)
+regionFrame.clearRegionButton:SetPoint("TOPRIGHT", regionFrame.detailsContent, "TOPRIGHT", -6, -34)
+regionFrame.clearRegionButton:SetText("Clear Region")
+
 regionFrame.detailsSummary = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 regionFrame.detailsSummary:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -78)
 regionFrame.detailsSummary:SetJustifyH("LEFT")
@@ -330,12 +335,34 @@ local function SyncRegionOptions(overviewData)
 end
 
 local RefreshRegionDetails
+local RefreshRegionWindow
+
+StaticPopupDialogs["FISHINGSTATS_CONFIRM_CLEAR_REGION"] = {
+  text = "Clear all saved data for %s?",
+  button1 = "Delete",
+  button2 = "Cancel",
+  OnAccept = function(_, data)
+    if not data or not data.regionName then
+      return
+    end
+
+    Addon.DeleteRegionStats(data.regionName)
+    RefreshPanel()
+    if regionFrame:IsShown() then
+      RefreshRegionWindow()
+    end
+  end,
+  timeout = 0,
+  whileDead = true,
+  hideOnEscape = true,
+  preferredIndex = STATICPOPUP_NUMDIALOGS,
+}
 
 UIDropDownMenu_SetWidth(regionFrame.dropdown, 180)
 UIDropDownMenu_Initialize(regionFrame.dropdown, function(self, level)
   for _, regionName in ipairs(regionFrame.regionOptions) do
     local info = UIDropDownMenu_CreateInfo()
-    info.text = regionName
+    info.text = "   " .. regionName
     info.checked = regionName == regionFrame.selectedRegion
     info.func = function()
       SetSelectedRegion(regionName)
@@ -415,6 +442,7 @@ RefreshRegionDetails = function()
     regionFrame.detailsSummary:Hide()
     regionFrame.detailsScrollFrame:Hide()
     regionFrame.detailsTitle:SetText("Region Details")
+    regionFrame.clearRegionButton:Disable()
     return
   end
 
@@ -424,6 +452,7 @@ RefreshRegionDetails = function()
     regionFrame.detailsSummary:Hide()
     regionFrame.detailsScrollFrame:Hide()
     regionFrame.detailsTitle:SetText(selectedRegion)
+    regionFrame.clearRegionButton:Disable()
     return
   end
 
@@ -431,6 +460,7 @@ RefreshRegionDetails = function()
   regionFrame.detailsSummary:Show()
   regionFrame.detailsScrollFrame:Show()
   regionFrame.detailsTitle:SetText(metrics.regionName)
+  regionFrame.clearRegionButton:Enable()
   regionFrame.detailsSummary:SetText(string.format(
     "Catches: %d   Item Types: %d   Total Earn: %s   Hourly Earn: %s",
     metrics.totalCount,
@@ -453,7 +483,7 @@ RefreshRegionDetails = function()
   end
 end
 
-local function RefreshRegionWindow()
+RefreshRegionWindow = function()
   RefreshRegionOverview()
   RefreshRegionDetails()
   SetRegionTab(regionFrame.activeTab or "overview")
@@ -484,6 +514,16 @@ end)
 
 regionFrame.refreshPriceButton:SetScript("OnClick", function()
   SlashCmdList["FS_RELOADPRICES"]()
+end)
+
+regionFrame.clearRegionButton:SetScript("OnClick", function()
+  if not regionFrame.selectedRegion then
+    return
+  end
+
+  StaticPopup_Show("FISHINGSTATS_CONFIRM_CLEAR_REGION", regionFrame.selectedRegion, nil, {
+    regionName = regionFrame.selectedRegion,
+  })
 end)
 
 SetRegionTab("overview")
