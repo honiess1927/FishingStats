@@ -3,7 +3,7 @@
 ## Notes: Tracks the types and counts of fish caught
 ## Version: 1.0.1
 ## SavedVariables: FishingStatsDB
-## OptionalDeps: Auctionator
+## OptionalDeps: Auctionator, TradeSkillMaster
 ## LoadOnDemand: 0          -- 让它和 Auctionator 一起被载入
 ## X-Curse-Project-ID: 1296711
 FishSet.lua

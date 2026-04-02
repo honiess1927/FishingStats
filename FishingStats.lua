@@ -139,23 +139,13 @@ FormatGoldOnlyCoins = function(value)
 end
 
 local function GetCachedItemPrice(itemID)
-  if not itemID then
-    return 0
+  if not itemID then return 0 end
+  if priceCache[itemID] then return priceCache[itemID] end
+  local price = Addon.GetItemPrice(itemID)
+  if price and price > 0 then
+    priceCache[itemID] = price
   end
-
-  if priceCache[itemID] then
-    return priceCache[itemID]
-  end
-
-  if Auctionator and Auctionator.API and Auctionator.API.v1 then
-    local price = Auctionator.API.v1.GetAuctionPriceByItemID(name, itemID)
-    if price then
-      priceCache[itemID] = price
-      return price
-    end
-  end
-
-  return 0
+  return price or 0
 end
 
 local regionFrame = CreateFrame("Frame", "FishingStatsRegionFrame", UIParent, "BackdropTemplate")
@@ -551,6 +541,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
   if event == "ADDON_LOADED" then
     local addon = ...
     if addon == "FishingStats" then
+      BuildSettingsPanel()
       print("🎣 FishingStats loaded. Click the minimap fishing icon to view stats.")
     end
 
@@ -717,3 +708,71 @@ SlashCmdList["FS_RELOADCOUNTS"] = function()
   RefreshPanel()
 end
 
+SLASH_FS_CONFIG1 = "/fsconfig"
+SlashCmdList["FS_CONFIG"] = function()
+  if Addon.settingsCategory then
+    Settings.OpenToCategory(Addon.settingsCategory:GetID())
+  end
+end
+
+------------------------------------------------------------
+-- WoW Settings panel (Interface → AddOns → FishingStats)
+------------------------------------------------------------
+local PRICE_SOURCES = { "Auctionator", "TSM", "None" }
+
+function BuildSettingsPanel()
+  local panel = CreateFrame("Frame")
+  panel.name = "FishingStats"
+
+  local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+  title:SetPoint("TOPLEFT", 16, -16)
+  title:SetText("FishingStats — Price Sources")
+
+  local subtitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
+  subtitle:SetText("Choose which auction-data addons provide item prices.\nPrimary is tried first; Secondary is the fallback.")
+
+  local function MakeDropdown(parent, label, yOffset, getter, setter)
+    local lbl = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    lbl:SetPoint("TOPLEFT", 16, yOffset)
+    lbl:SetText(label)
+
+    local dd = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
+    dd:SetPoint("TOPLEFT", 12, yOffset - 22)
+    UIDropDownMenu_SetWidth(dd, 180)
+    UIDropDownMenu_Initialize(dd, function(_, level)
+      for _, src in ipairs(PRICE_SOURCES) do
+        local available = (src == "None")
+          or (src == "Auctionator" and Auctionator and Auctionator.API ~= nil)
+          or (src == "TSM"         and TSM_API ~= nil)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text    = available and src or (src .. " |cffff4444(not loaded)|r")
+        info.checked = getter() == src
+        info.func    = function()
+          setter(src)
+          UIDropDownMenu_SetText(dd, src)
+          wipe(FishingStatsDB.prices)
+        end
+        UIDropDownMenu_AddButton(info, level)
+      end
+    end)
+    UIDropDownMenu_SetText(dd, getter())
+    return dd
+  end
+
+  MakeDropdown(
+    panel, "Primary Price Source:", -72,
+    function() return (FishingStatsDB.config or {}).primarySource or "Auctionator" end,
+    function(v) FishingStatsDB.config.primarySource = v end
+  )
+
+  MakeDropdown(
+    panel, "Secondary Price Source (fallback):", -140,
+    function() return (FishingStatsDB.config or {}).secondarySource or "TSM" end,
+    function(v) FishingStatsDB.config.secondarySource = v end
+  )
+
+  local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+  Settings.RegisterAddOnCategory(category)
+  Addon.settingsCategory = category
+end

@@ -26,24 +26,40 @@ local function IsZeroHourlyItem(itemName)
   return itemName == "杂项" or itemName == "垃圾"
 end
 
-local function GetCurrentItemPrice(itemID)
-  if not itemID then
-    return 0
-  end
-
-  if priceCache[itemID] then
-    return priceCache[itemID]
-  end
-
-  if Auctionator and Auctionator.API and Auctionator.API.v1 then
-    local price = Auctionator.API.v1.GetAuctionPriceByItemID(name, itemID)
-    if price then
-      priceCache[itemID] = price
-      return price
+function Addon.GetItemPriceFromSource(source, itemID)
+  if not itemID then return nil end
+  if source == "Auctionator" then
+    if Auctionator and Auctionator.API and Auctionator.API.v1 then
+      return Auctionator.API.v1.GetAuctionPriceByItemID("FishingStats", itemID)
+    end
+  elseif source == "TSM" then
+    if TSM_API then
+      return TSM_API.GetCustomPriceValue("DBMinBuyout", "i:" .. itemID)
     end
   end
+  return nil
+end
 
-  return 0
+function Addon.GetItemPrice(itemID)
+  if not itemID then return 0 end
+  local cfg = FishingStatsDB.config or {}
+  local primary   = cfg.primarySource   or "Auctionator"
+  local secondary = cfg.secondarySource or "TSM"
+  local price = Addon.GetItemPriceFromSource(primary, itemID)
+  if (not price or price == 0) and secondary ~= "None" and secondary ~= primary then
+    price = Addon.GetItemPriceFromSource(secondary, itemID)
+  end
+  return price or 0
+end
+
+local function GetCurrentItemPrice(itemID)
+  if not itemID then return 0 end
+  if priceCache[itemID] then return priceCache[itemID] end
+  local price = Addon.GetItemPrice(itemID)
+  if price and price > 0 then
+    priceCache[itemID] = price
+  end
+  return price or 0
 end
 
 local function SortRegionItems(items)
@@ -83,6 +99,9 @@ function InitDB()
   FishingStatsDB.regionStats = FishingStatsDB.regionStats or {}
   FishingStatsDB.meta = FishingStatsDB.meta or {}
   FishingStatsDB.meta.dataVersion = 2
+  FishingStatsDB.config = FishingStatsDB.config or {}
+  FishingStatsDB.config.primarySource   = FishingStatsDB.config.primarySource   or "Auctionator"
+  FishingStatsDB.config.secondarySource = FishingStatsDB.config.secondarySource or "TSM"
   priceCache = FishingStatsDB.prices
 end
 
@@ -287,19 +306,19 @@ end
 --- Load Fish Price ---
 
 function Addon.PreloadFishPrices()
-  if not Auctionator or not Auctionator.API or not Auctionator.API.v1 then
-    print("Auctionator API not available. Price preload skipped.")
+  local cfg = FishingStatsDB.config or {}
+  if cfg.primarySource == "None" and cfg.secondarySource == "None" then
+    print("FishingStats: No price source configured. Prices will be unavailable.")
     return
   end
 
   for itemID in pairs(FISH_SET) do
-    -- 只在未缓存时才查询
     if not priceCache[itemID] then
-      local price = Auctionator.API.v1.GetAuctionPriceByItemID(name, itemID)
-      if price then
+      local price = Addon.GetItemPrice(itemID)
+      if price and price > 0 then
         priceCache[itemID] = price
       end
     end
   end
-  print("FishingStats: Fish price preload complete.")
+  print("FishingStats: Price preload complete.")
 end
