@@ -478,6 +478,7 @@ RefreshRegionWindow = function()
   RefreshRegionDetails()
   SetRegionTab(regionFrame.activeTab or "overview")
 end
+Addon.RefreshRegionWindow = RefreshRegionWindow
 
 local function ShowRegionOverviewWindow()
   regionFrame.activeTab = "overview"

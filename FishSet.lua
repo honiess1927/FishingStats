@@ -107,9 +107,16 @@ end
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
+f:RegisterEvent("AUCTION_HOUSE_CLOSED")
 f:SetScript("OnEvent", function(_, event, addonName)
-  if addonName == "FishingStats" then
+  if event == "ADDON_LOADED" and addonName == "FishingStats" then
     InitDB()
+  elseif event == "AUCTION_HOUSE_CLOSED" then
+    wipe(priceCache)
+    Addon.PreloadFishPrices()
+    if Addon.RefreshRegionWindow then
+      Addon.RefreshRegionWindow()
+    end
   end
 end)
 
