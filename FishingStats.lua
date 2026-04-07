@@ -531,6 +531,122 @@ currentRegionButton:SetPoint("TOPLEFT", overviewButton, "BOTTOMLEFT", 0, -6)
 currentRegionButton:SetText("Region")
 currentRegionButton:SetScript("OnClick", ShowCurrentRegionWindow)
 
+------------------------------------------------------------
+-- Daily Earnings window
+------------------------------------------------------------
+local dailyFrame = CreateFrame("Frame", "FishingStatsDailyFrame", UIParent, "BackdropTemplate")
+dailyFrame:SetSize(380, 360)
+dailyFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+dailyFrame:SetBackdrop({
+  bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+  edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+  tile     = true, tileSize = 32, edgeSize = 32,
+  insets   = { left=10, right=10, top=10, bottom=10 },
+})
+dailyFrame:EnableMouse(true)
+dailyFrame:SetMovable(true)
+dailyFrame:RegisterForDrag("LeftButton")
+dailyFrame:SetScript("OnDragStart", dailyFrame.StartMoving)
+dailyFrame:SetScript("OnDragStop", dailyFrame.StopMovingOrSizing)
+dailyFrame:Hide()
+
+table.insert(UISpecialFrames, "FishingStatsDailyFrame")
+
+dailyFrame.title = dailyFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
+dailyFrame.title:SetPoint("TOP", dailyFrame, "TOP", 0, -18)
+dailyFrame.title:SetText("Daily Earnings")
+
+dailyFrame.closeButton = CreateFrame("Button", nil, dailyFrame, "UIPanelCloseButton")
+dailyFrame.closeButton:SetPoint("TOPRIGHT", dailyFrame, "TOPRIGHT", -5, -5)
+
+local dailyContent = CreateFrame("Frame", nil, dailyFrame)
+dailyContent:SetPoint("TOPLEFT",     dailyFrame, "TOPLEFT",     18, -48)
+dailyContent:SetPoint("BOTTOMRIGHT", dailyFrame, "BOTTOMRIGHT", -18, 18)
+
+local dailyHeaderConfig = {
+  { key = "date",  text = "Date",       x = 0   },
+  { key = "count", text = "Catches",    x = 140  },
+  { key = "earn",  text = "Total Earn", x = 210 },
+}
+dailyFrame.dailyHeaders = {}
+for _, col in ipairs(dailyHeaderConfig) do
+  local h = dailyContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  h:SetPoint("TOPLEFT", dailyContent, "TOPLEFT", col.x, 0)
+  h:SetText(col.text)
+  dailyFrame.dailyHeaders[col.key] = h
+end
+
+dailyFrame.scrollFrame = CreateFrame("ScrollFrame", "FishingStatsDailyScrollFrame", dailyContent, "UIPanelScrollFrameTemplate")
+dailyFrame.scrollFrame:SetPoint("TOPLEFT",     dailyContent, "TOPLEFT",     0,   -20)
+dailyFrame.scrollFrame:SetPoint("BOTTOMRIGHT", dailyContent, "BOTTOMRIGHT", -28,  6)
+
+dailyFrame.scrollChild = CreateFrame("Frame", nil, dailyFrame.scrollFrame)
+dailyFrame.scrollChild:SetSize(310, 1)
+dailyFrame.scrollFrame:SetScrollChild(dailyFrame.scrollChild)
+
+dailyFrame.rows = {}
+
+local function EnsureDailyRows(count)
+  for i = #dailyFrame.rows + 1, count do
+    local yOffset = -((i - 1) * 20)
+    local row = {}
+    row.date  = dailyFrame.scrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.date:SetPoint("TOPLEFT", dailyFrame.scrollChild, "TOPLEFT", 0, yOffset)
+    row.count = dailyFrame.scrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.count:SetPoint("TOPLEFT", dailyFrame.scrollChild, "TOPLEFT", 140, yOffset)
+    row.earn  = dailyFrame.scrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.earn:SetPoint("TOPLEFT", dailyFrame.scrollChild, "TOPLEFT", 210, yOffset)
+    dailyFrame.rows[i] = row
+  end
+end
+
+dailyFrame.emptyText = dailyContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+dailyFrame.emptyText:SetPoint("TOPLEFT", dailyContent, "TOPLEFT", 0, -28)
+dailyFrame.emptyText:SetText("No daily data recorded yet.")
+
+local function RefreshDailyWindow()
+  local data = Addon.GetDailyEarnData()
+
+  for _, row in ipairs(dailyFrame.rows) do
+    row.date:SetText("")
+    row.count:SetText("")
+    row.earn:SetText("")
+  end
+  dailyFrame.scrollFrame:SetVerticalScroll(0)
+
+  if #data == 0 then
+    dailyFrame.emptyText:Show()
+    dailyFrame.scrollFrame:Hide()
+    return
+  end
+
+  dailyFrame.emptyText:Hide()
+  dailyFrame.scrollFrame:Show()
+
+  EnsureDailyRows(#data)
+  dailyFrame.scrollChild:SetHeight(math.max(1, #data * 20))
+
+  for i, entry in ipairs(data) do
+    local row = dailyFrame.rows[i]
+    row.date:SetText(entry.dateKey)
+    row.count:SetText(tostring(entry.totalCount))
+    row.earn:SetText(FormatCoins(entry.totalEarn))
+  end
+end
+
+local dailyButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+dailyButton:SetSize(72, 24)
+dailyButton:SetPoint("TOPLEFT", currentRegionButton, "BOTTOMLEFT", 0, -6)
+dailyButton:SetText("Daily")
+dailyButton:SetScript("OnClick", function()
+  if dailyFrame:IsShown() then
+    dailyFrame:Hide()
+  else
+    RefreshDailyWindow()
+    dailyFrame:Show()
+  end
+end)
+
 
 -- ------------- Event handling -------------
 frame:RegisterEvent("ADDON_LOADED")
@@ -585,6 +701,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
           print("Caught: " .. name .. "; Total: " .. fishCounts[name] .. " Value: " .. GetCoinTextureString(totalPrice))
           FishingStatsDB.earn = FishingStatsDB.earn + totalPrice
           Addon.RecordRegionCatch(regionName, id, name, count, totalPrice)
+          Addon.RecordDailyEarn(count, totalPrice)
           if regionFrame:IsShown() then
             RefreshRegionWindow()
           end

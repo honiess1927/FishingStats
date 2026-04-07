@@ -97,6 +97,7 @@ function InitDB()
   FishingStatsDB.prices = FishingStatsDB.prices or {}
   FishingStatsDB.earn = FishingStatsDB.earn or 0
   FishingStatsDB.regionStats = FishingStatsDB.regionStats or {}
+  FishingStatsDB.dailyStats = FishingStatsDB.dailyStats or {}
   FishingStatsDB.meta = FishingStatsDB.meta or {}
   FishingStatsDB.meta.dataVersion = 2
   FishingStatsDB.config = FishingStatsDB.config or {}
@@ -219,6 +220,29 @@ function Addon.RecordRegionCatch(regionName, itemID, itemName, count, totalEarn)
   itemStats.totalEarn = (itemStats.totalEarn or 0) + safeEarn
   regionStats.totalCount = (regionStats.totalCount or 0) + safeCount
   regionStats.totalEarn = (regionStats.totalEarn or 0) + safeEarn
+end
+
+function Addon.RecordDailyEarn(count, earn)
+  local dateKey = date("%Y-%m-%d")
+  local daily = FishingStatsDB.dailyStats
+  if not daily[dateKey] then
+    daily[dateKey] = { totalCount = 0, totalEarn = 0 }
+  end
+  daily[dateKey].totalCount = (daily[dateKey].totalCount or 0) + count
+  daily[dateKey].totalEarn  = (daily[dateKey].totalEarn  or 0) + earn
+end
+
+function Addon.GetDailyEarnData()
+  local result = {}
+  for dateKey, stats in pairs(FishingStatsDB.dailyStats or {}) do
+    table.insert(result, {
+      dateKey    = dateKey,
+      totalCount = stats.totalCount or 0,
+      totalEarn  = stats.totalEarn  or 0,
+    })
+  end
+  table.sort(result, function(a, b) return a.dateKey > b.dateKey end)
+  return result
 end
 
 function Addon.DeleteRegionStats(regionName)
