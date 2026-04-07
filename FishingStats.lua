@@ -185,6 +185,11 @@ regionFrame.detailsTab:SetSize(110, 24)
 regionFrame.detailsTab:SetPoint("LEFT", regionFrame.overviewTab, "RIGHT", 8, 0)
 regionFrame.detailsTab:SetText("Details")
 
+regionFrame.dailyTab = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
+regionFrame.dailyTab:SetSize(110, 24)
+regionFrame.dailyTab:SetPoint("LEFT", regionFrame.detailsTab, "RIGHT", 8, 0)
+regionFrame.dailyTab:SetText("Daily Earn")
+
 regionFrame.refreshPriceButton = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
 regionFrame.refreshPriceButton:SetSize(100, 24)
 regionFrame.refreshPriceButton:SetPoint("TOPRIGHT", regionFrame, "TOPRIGHT", -34, -48)
@@ -197,6 +202,11 @@ regionFrame.overviewContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", 
 regionFrame.detailsContent = CreateFrame("Frame", nil, regionFrame)
 regionFrame.detailsContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
 regionFrame.detailsContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
+
+regionFrame.dailyContent = CreateFrame("Frame", nil, regionFrame)
+regionFrame.dailyContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
+regionFrame.dailyContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
+
 regionFrame.regionOptions = {}
 
 regionFrame.overviewHeaders = {}
@@ -300,6 +310,34 @@ regionFrame.detailsEmptyText = regionFrame.detailsContent:CreateFontString(nil, 
 regionFrame.detailsEmptyText:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -78)
 regionFrame.detailsEmptyText:SetText("No regional data recorded yet.")
 
+-- Daily content UI
+local dailyHeaderConfig = {
+  { key = "date",  text = "Date",       x = 0   },
+  { key = "count", text = "Catches",    x = 160 },
+  { key = "earn",  text = "Total Earn", x = 240 },
+}
+regionFrame.dailyHeaders = {}
+for _, col in ipairs(dailyHeaderConfig) do
+  local h = regionFrame.dailyContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  h:SetPoint("TOPLEFT", regionFrame.dailyContent, "TOPLEFT", col.x, 0)
+  h:SetText(col.text)
+  regionFrame.dailyHeaders[col.key] = h
+end
+
+regionFrame.dailyScrollFrame = CreateFrame("ScrollFrame", "FishingStatsDailyScrollFrame", regionFrame.dailyContent, "UIPanelScrollFrameTemplate")
+regionFrame.dailyScrollFrame:SetPoint("TOPLEFT",     regionFrame.dailyContent, "TOPLEFT",     0,   -20)
+regionFrame.dailyScrollFrame:SetPoint("BOTTOMRIGHT", regionFrame.dailyContent, "BOTTOMRIGHT", -28,  6)
+
+regionFrame.dailyScrollChild = CreateFrame("Frame", nil, regionFrame.dailyScrollFrame)
+regionFrame.dailyScrollChild:SetSize(430, 1)
+regionFrame.dailyScrollFrame:SetScrollChild(regionFrame.dailyScrollChild)
+
+regionFrame.dailyRows = {}
+
+regionFrame.dailyEmptyText = regionFrame.dailyContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+regionFrame.dailyEmptyText:SetPoint("TOPLEFT", regionFrame.dailyContent, "TOPLEFT", 0, -28)
+regionFrame.dailyEmptyText:SetText("No daily data recorded yet.")
+
 local function SetSelectedRegion(regionName)
   regionFrame.selectedRegion = regionName
   UIDropDownMenu_SetText(regionFrame.dropdown, regionName or "Select Region")
@@ -365,17 +403,13 @@ end)
 local function SetRegionTab(tabName)
   regionFrame.activeTab = tabName
 
-  if tabName == "overview" then
-    regionFrame.overviewContent:Show()
-    regionFrame.detailsContent:Hide()
-    regionFrame.overviewTab:Disable()
-    regionFrame.detailsTab:Enable()
-  else
-    regionFrame.overviewContent:Hide()
-    regionFrame.detailsContent:Show()
-    regionFrame.overviewTab:Enable()
-    regionFrame.detailsTab:Disable()
-  end
+  regionFrame.overviewContent:SetShown(tabName == "overview")
+  regionFrame.detailsContent:SetShown(tabName == "details")
+  regionFrame.dailyContent:SetShown(tabName == "daily")
+
+  regionFrame.overviewTab:SetEnabled(tabName ~= "overview")
+  regionFrame.detailsTab:SetEnabled(tabName ~= "details")
+  regionFrame.dailyTab:SetEnabled(tabName ~= "daily")
 end
 
 local function RefreshRegionOverview()
@@ -473,9 +507,54 @@ RefreshRegionDetails = function()
   end
 end
 
+local function EnsureDailyRows(count)
+  for i = #regionFrame.dailyRows + 1, count do
+    local yOffset = -((i - 1) * 22)
+    local row = {}
+    row.date  = regionFrame.dailyScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.date:SetPoint("TOPLEFT", regionFrame.dailyScrollChild, "TOPLEFT", 0, yOffset)
+    row.count = regionFrame.dailyScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.count:SetPoint("TOPLEFT", regionFrame.dailyScrollChild, "TOPLEFT", 160, yOffset)
+    row.earn  = regionFrame.dailyScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.earn:SetPoint("TOPLEFT", regionFrame.dailyScrollChild, "TOPLEFT", 240, yOffset)
+    regionFrame.dailyRows[i] = row
+  end
+end
+
+local function RefreshDailyContent()
+  local data = Addon.GetDailyEarnData()
+
+  for _, row in ipairs(regionFrame.dailyRows) do
+    row.date:SetText("")
+    row.count:SetText("")
+    row.earn:SetText("")
+  end
+  regionFrame.dailyScrollFrame:SetVerticalScroll(0)
+
+  if #data == 0 then
+    regionFrame.dailyEmptyText:Show()
+    regionFrame.dailyScrollFrame:Hide()
+    return
+  end
+
+  regionFrame.dailyEmptyText:Hide()
+  regionFrame.dailyScrollFrame:Show()
+
+  EnsureDailyRows(#data)
+  regionFrame.dailyScrollChild:SetHeight(math.max(1, #data * 22))
+
+  for i, entry in ipairs(data) do
+    local row = regionFrame.dailyRows[i]
+    row.date:SetText(entry.dateKey)
+    row.count:SetText(tostring(entry.totalCount))
+    row.earn:SetText(FormatCoins(entry.totalEarn))
+  end
+end
+
 RefreshRegionWindow = function()
   RefreshRegionOverview()
   RefreshRegionDetails()
+  RefreshDailyContent()
   SetRegionTab(regionFrame.activeTab or "overview")
 end
 Addon.RefreshRegionWindow = RefreshRegionWindow
@@ -501,6 +580,11 @@ end)
 regionFrame.detailsTab:SetScript("OnClick", function()
   RefreshRegionDetails()
   SetRegionTab("details")
+end)
+
+regionFrame.dailyTab:SetScript("OnClick", function()
+  RefreshDailyContent()
+  SetRegionTab("daily")
 end)
 
 regionFrame.refreshPriceButton:SetScript("OnClick", function()
@@ -531,120 +615,14 @@ currentRegionButton:SetPoint("TOPLEFT", overviewButton, "BOTTOMLEFT", 0, -6)
 currentRegionButton:SetText("Region")
 currentRegionButton:SetScript("OnClick", ShowCurrentRegionWindow)
 
-------------------------------------------------------------
--- Daily Earnings window
-------------------------------------------------------------
-local dailyFrame = CreateFrame("Frame", "FishingStatsDailyFrame", UIParent, "BackdropTemplate")
-dailyFrame:SetSize(380, 360)
-dailyFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-dailyFrame:SetBackdrop({
-  bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-  edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-  tile     = true, tileSize = 32, edgeSize = 32,
-  insets   = { left=10, right=10, top=10, bottom=10 },
-})
-dailyFrame:EnableMouse(true)
-dailyFrame:SetMovable(true)
-dailyFrame:RegisterForDrag("LeftButton")
-dailyFrame:SetScript("OnDragStart", dailyFrame.StartMoving)
-dailyFrame:SetScript("OnDragStop", dailyFrame.StopMovingOrSizing)
-dailyFrame:Hide()
-
-table.insert(UISpecialFrames, "FishingStatsDailyFrame")
-
-dailyFrame.title = dailyFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
-dailyFrame.title:SetPoint("TOP", dailyFrame, "TOP", 0, -18)
-dailyFrame.title:SetText("Daily Earnings")
-
-dailyFrame.closeButton = CreateFrame("Button", nil, dailyFrame, "UIPanelCloseButton")
-dailyFrame.closeButton:SetPoint("TOPRIGHT", dailyFrame, "TOPRIGHT", -5, -5)
-
-local dailyContent = CreateFrame("Frame", nil, dailyFrame)
-dailyContent:SetPoint("TOPLEFT",     dailyFrame, "TOPLEFT",     18, -48)
-dailyContent:SetPoint("BOTTOMRIGHT", dailyFrame, "BOTTOMRIGHT", -18, 18)
-
-local dailyHeaderConfig = {
-  { key = "date",  text = "Date",       x = 0   },
-  { key = "count", text = "Catches",    x = 140  },
-  { key = "earn",  text = "Total Earn", x = 210 },
-}
-dailyFrame.dailyHeaders = {}
-for _, col in ipairs(dailyHeaderConfig) do
-  local h = dailyContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  h:SetPoint("TOPLEFT", dailyContent, "TOPLEFT", col.x, 0)
-  h:SetText(col.text)
-  dailyFrame.dailyHeaders[col.key] = h
-end
-
-dailyFrame.scrollFrame = CreateFrame("ScrollFrame", "FishingStatsDailyScrollFrame", dailyContent, "UIPanelScrollFrameTemplate")
-dailyFrame.scrollFrame:SetPoint("TOPLEFT",     dailyContent, "TOPLEFT",     0,   -20)
-dailyFrame.scrollFrame:SetPoint("BOTTOMRIGHT", dailyContent, "BOTTOMRIGHT", -28,  6)
-
-dailyFrame.scrollChild = CreateFrame("Frame", nil, dailyFrame.scrollFrame)
-dailyFrame.scrollChild:SetSize(310, 1)
-dailyFrame.scrollFrame:SetScrollChild(dailyFrame.scrollChild)
-
-dailyFrame.rows = {}
-
-local function EnsureDailyRows(count)
-  for i = #dailyFrame.rows + 1, count do
-    local yOffset = -((i - 1) * 20)
-    local row = {}
-    row.date  = dailyFrame.scrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.date:SetPoint("TOPLEFT", dailyFrame.scrollChild, "TOPLEFT", 0, yOffset)
-    row.count = dailyFrame.scrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.count:SetPoint("TOPLEFT", dailyFrame.scrollChild, "TOPLEFT", 140, yOffset)
-    row.earn  = dailyFrame.scrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.earn:SetPoint("TOPLEFT", dailyFrame.scrollChild, "TOPLEFT", 210, yOffset)
-    dailyFrame.rows[i] = row
-  end
-end
-
-dailyFrame.emptyText = dailyContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-dailyFrame.emptyText:SetPoint("TOPLEFT", dailyContent, "TOPLEFT", 0, -28)
-dailyFrame.emptyText:SetText("No daily data recorded yet.")
-
-local function RefreshDailyWindow()
-  local data = Addon.GetDailyEarnData()
-
-  for _, row in ipairs(dailyFrame.rows) do
-    row.date:SetText("")
-    row.count:SetText("")
-    row.earn:SetText("")
-  end
-  dailyFrame.scrollFrame:SetVerticalScroll(0)
-
-  if #data == 0 then
-    dailyFrame.emptyText:Show()
-    dailyFrame.scrollFrame:Hide()
-    return
-  end
-
-  dailyFrame.emptyText:Hide()
-  dailyFrame.scrollFrame:Show()
-
-  EnsureDailyRows(#data)
-  dailyFrame.scrollChild:SetHeight(math.max(1, #data * 20))
-
-  for i, entry in ipairs(data) do
-    local row = dailyFrame.rows[i]
-    row.date:SetText(entry.dateKey)
-    row.count:SetText(tostring(entry.totalCount))
-    row.earn:SetText(FormatCoins(entry.totalEarn))
-  end
-end
-
 local dailyButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 dailyButton:SetSize(72, 24)
 dailyButton:SetPoint("TOPLEFT", currentRegionButton, "BOTTOMLEFT", 0, -6)
 dailyButton:SetText("Daily")
 dailyButton:SetScript("OnClick", function()
-  if dailyFrame:IsShown() then
-    dailyFrame:Hide()
-  else
-    RefreshDailyWindow()
-    dailyFrame:Show()
-  end
+  regionFrame.activeTab = "daily"
+  RefreshRegionWindow()
+  regionFrame:Show()
 end)
 
 
