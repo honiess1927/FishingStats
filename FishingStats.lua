@@ -5,9 +5,15 @@
 
 -- ------------- Configuration -------------
 local name, Addon = ...
-local FISH_SPELL_ID = 131474                       -- Base fishing skill spell ID
 
-local isFishing = false
+-- ------------- Debug logging -------------
+-- Toggle with /fsdebug. Prints go out with a [FS-DEBUG] prefix so they're easy to
+-- spot/filter in chat while we track down the catch-detection issue.
+local debugEnabled = false
+local function DebugPrint(...)
+  if not debugEnabled then return end
+  print("|cff33ff99[FS-DEBUG]|r", ...)
+end
 
 -- ------------- UI -------------
 -- Main panel
@@ -626,13 +632,61 @@ dailyButton:SetScript("OnClick", function()
 end)
 
 
+-- Records one caught item (fish, ore, junk, misc...) from a fishing catch.
+-- `link` is a full item hyperlink so GetItemInfo works even before the item is
+-- otherwise cached.
+local function RecordFishCatch(regionName, id, link, quantity)
+  local itemName
+  if Addon.IsTrackedFish(id) then
+    itemName = GetItemInfo(link)
+  else
+    local quality = select(3, GetItemInfo(link))
+    itemName = (quality == 0) and "垃圾" or "杂项"
+  end
+  if not itemName then
+    return
+  end
+
+  local fishCounts = FishingStatsDB.fishCounts
+  -- Misc and junk count as 1; everything else uses the loot quantity
+  local count = quantity
+  if (itemName == "杂项" or itemName == "垃圾") then
+    count = 1
+  end
+  fishCounts[itemName] = (fishCounts[itemName] or 0) + count
+  local price = GetCachedItemPrice(id)
+  local totalPrice = price * quantity
+  print("Caught: " .. itemName .. "; Total: " .. fishCounts[itemName] .. " Value: " .. GetCoinTextureString(totalPrice))
+  FishingStatsDB.earn = FishingStatsDB.earn + totalPrice
+  Addon.RecordRegionCatch(regionName, id, itemName, count, totalPrice)
+  Addon.RecordDailyEarn(count, totalPrice)
+  if regionFrame:IsShown() then
+    RefreshRegionWindow()
+  end
+  RefreshPanel()
+
+  if id == 220152 then
+    useBtn:SetAttribute("item", itemName)
+    -- Simulate one click to trigger the secure action
+    useBtn:Click()
+    print("Auto-used:", itemName)
+  end
+end
+
 -- ------------- Event handling -------------
 frame:RegisterEvent("ADDON_LOADED")
-frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+-- Loot addons like SpeedyAutoLoot register for both LOOT_READY and LOOT_OPENED and
+-- handle whichever fires (see its OnInit) because the client doesn't reliably fire
+-- LOOT_OPENED for a quick single-item catch - LOOT_READY is the one that always
+-- fires. We do the same, with lootSessionHandled/LOOT_CLOSED guarding against
+-- double-processing the same loot session if both events do fire.
+frame:RegisterEvent("LOOT_READY")
 frame:RegisterEvent("LOOT_OPENED")
+frame:RegisterEvent("LOOT_CLOSED")
+
+local lootSessionHandled = false
 
 frame:SetScript("OnEvent", function(self, event, ...)
-  local fishCounts = FishingStatsDB.fishCounts  
   if event == "ADDON_LOADED" then
     local addon = ...
     if addon == "FishingStats" then
@@ -640,62 +694,39 @@ frame:SetScript("OnEvent", function(self, event, ...)
       print("🎣 FishingStats loaded. Click the minimap fishing icon to view stats.")
     end
 
-  elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-    local unit, _, spellID = ...
-    if unit == "player" and spellID == FISH_SPELL_ID then
-      isFishing = true
+  elseif event == "LOOT_CLOSED" then
+    lootSessionHandled = false
 
-    elseif event == "LOOT_OPENED" and isFishing then
-      -- This branch is unreachable because event is already UNIT_SPELLCAST_SUCCEEDED
+  elseif event == "LOOT_READY" or event == "LOOT_OPENED" then
+    if lootSessionHandled then
+      return
     end
 
-  elseif event == "LOOT_OPENED" and isFishing then
+    local numItems = GetNumLootItems()
+    if numItems == 0 then
+      -- Loot data isn't ready yet on this particular event; wait for the next one.
+      return
+    end
+
+    local fishingLoot = IsFishingLoot and IsFishingLoot()
+    DebugPrint(event, "IsFishingLoot=" .. tostring(fishingLoot), "numItems=" .. tostring(numItems))
+    lootSessionHandled = true
+
+    if not fishingLoot then
+      return
+    end
+
     local regionName = Addon.GetCurrentFishingRegion()
-    local n = GetNumLootItems()
-    for i = 1, n do
-      local icon, name, quantity, _, quality = GetLootSlotInfo(i)
+    for i = 1, numItems do
       local link = GetLootSlotLink(i)
+      local _, _, quantity = GetLootSlotInfo(i)
       if link then
         local id = tonumber(link:match("item:(%d+):"))
-        local name
-        if Addon.IsTrackedFish(id) then
-          name = GetItemInfo(link)
-        else
-          if quality == 0 then
-              name = "垃圾"
-          else
-              name = "杂项"
-          end
-        end
-        if name then
-          -- Misc and junk count as 1; everything else uses the loot quantity
-          local count = quantity
-          if (name == "杂项" or name == "垃圾") then
-            count = 1
-          end
-          fishCounts[name] = (fishCounts[name] or 0) + count
-          local price = GetCachedItemPrice(id)
-          local totalPrice = price * quantity
-          print("Caught: " .. name .. "; Total: " .. fishCounts[name] .. " Value: " .. GetCoinTextureString(totalPrice))
-          FishingStatsDB.earn = FishingStatsDB.earn + totalPrice
-          Addon.RecordRegionCatch(regionName, id, name, count, totalPrice)
-          Addon.RecordDailyEarn(count, totalPrice)
-          if regionFrame:IsShown() then
-            RefreshRegionWindow()
-          end
-          RefreshPanel()
-        end
-        if id == 220152 then
-          if name then
-            useBtn:SetAttribute("item", name)
-            -- Simulate one click to trigger the secure action
-            useBtn:Click()
-            print("Auto-used:", name)
-          end
+        if id then
+          RecordFishCatch(regionName, id, link, quantity)
         end
       end
     end
-    isFishing = false
   end
 end)
 
@@ -809,6 +840,12 @@ SlashCmdList["FS_CONFIG"] = function()
   if Addon.settingsCategory then
     Settings.OpenToCategory(Addon.settingsCategory:GetID())
   end
+end
+
+SLASH_FS_DEBUG1 = "/fsdebug"
+SlashCmdList["FS_DEBUG"] = function()
+  debugEnabled = not debugEnabled
+  print("FishingStats debug logging:", debugEnabled and "|cff33ff99ON|r" or "|cffff4444OFF|r")
 end
 
 ------------------------------------------------------------
