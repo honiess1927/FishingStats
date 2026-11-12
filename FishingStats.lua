@@ -9,7 +9,6 @@ local name, Addon = ...
 -- The global item APIs were deprecated in favor of C_Item and removed in newer
 -- clients; prefer C_Item and fall back to the old globals if present.
 local GetItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-local GetItemCount = (C_Item and C_Item.GetItemCount) or GetItemCount
 local GetCoinTextureString = (C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString)
   or GetCoinTextureString or GetMoneyString
 
@@ -24,15 +23,23 @@ end
 
 -- ------------- UI -------------
 -- Main panel
+-- Flat, ElvUI-like backdrop used when ElvUI isn't installed. When ElvUI is
+-- loaded, ApplyElvUISkin() (bottom of this file) re-skins with ElvUI's own template.
+local FLAT_BACKDROP = {
+  bgFile   = "Interface\\Buttons\\WHITE8X8",
+  edgeFile = "Interface\\Buttons\\WHITE8X8",
+  edgeSize = 1,
+}
+local function ApplyFlatBackdrop(f)
+  f:SetBackdrop(FLAT_BACKDROP)
+  f:SetBackdropColor(0.06, 0.06, 0.06, 0.85)
+  f:SetBackdropBorderColor(0, 0, 0, 1)
+end
+
 local frame = CreateFrame("Frame", "FishingStatsFrame", UIParent, "BackdropTemplate")
-frame:SetSize(150, 300)
+frame:SetSize(160, 300)
 frame:SetPoint("CENTER")
-frame:SetBackdrop({
-  bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-  edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-  tile     = true, tileSize = 32, edgeSize = 32,
-  insets   = { left=10, right=10, top=10, bottom=10 },
-})
+ApplyFlatBackdrop(frame)
 frame:EnableMouse(true)
 frame:SetMovable(true)
 frame:RegisterForDrag("LeftButton")
@@ -40,51 +47,123 @@ frame:SetScript("OnDragStart", frame.StartMoving)
 frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
 frame:Hide()
 
--- Static FontString rows used to display totals
-local maxLines = 15
+-- Layout (top to bottom):
+--   Title "Fishing Stats" + current region subtitle
+--   ── separator ──
+--   3 label/value rows: Skill / Hourly / Total
+--   ── separator ──
+--   Scrollable catch list: name | count | percent
+local PAD = 10
 local lineHeight = 16
-local lines = {}
-for i = 1, maxLines do
-  local fs = frame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  fs:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, - (20 + (i-1)*lineHeight))
-  fs:SetText("Hello")    -- Initial placeholder
-  lines[i] = fs
+local LABEL_COLOR = { 0.6, 0.6, 0.6 }
+
+local function AddSeparator(yOffset)
+  local sep = frame:CreateTexture(nil, "ARTWORK")
+  sep:SetColorTexture(1, 1, 1, 0.12)
+  sep:SetHeight(1)
+  sep:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, yOffset)
+  sep:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, yOffset)
+  return sep
 end
 
--- Create buttons
--- ... after the frame has been created ...
-------------------------------------------------------------
--- Swappable buff item list
-------------------------------------------------------------
-local buffItemIDs = {117405, 133755, 88535, 241148}
-local MAX_COL = 4              -- Up to 4 buttons per row
-local BTN_SIZE = 28
-local BTN_PADDING = 4
+-- Title
+frame.title = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+frame.title:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -PAD)
+frame.title:SetText("Fishing Stats")
+
+frame.subtitle = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+frame.subtitle:SetPoint("TOPLEFT", frame.title, "BOTTOMLEFT", 0, -3)
+frame.subtitle:SetPoint("RIGHT", frame, "RIGHT", -PAD, 0)
+frame.subtitle:SetJustifyH("LEFT")
+frame.subtitle:SetWordWrap(false)
+frame.subtitle:SetTextColor(unpack(LABEL_COLOR))
+
+AddSeparator(-44)
+
+-- Key stats: label on the left (grey, small), value right-aligned (white)
+local function AddStatRow(label, yOffset)
+  local lbl = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  lbl:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, yOffset - 2)
+  lbl:SetTextColor(unpack(LABEL_COLOR))
+  lbl:SetText(label)
+
+  local value = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  value:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, yOffset)
+  value:SetJustifyH("RIGHT")
+  return value
+end
+
+frame.skillValue  = AddStatRow("Skill",  -52)
+frame.hourlyValue = AddStatRow("Hourly", -70)
+frame.totalValue  = AddStatRow("Total",  -88)
+
+AddSeparator(-108)
+
+-- Scrollable catch list (mouse wheel or scroll bar)
+local fishScrollFrame = CreateFrame("ScrollFrame", "FishingStatsFishScrollFrame", frame, "UIPanelScrollFrameTemplate")
+fishScrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -114)
+fishScrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -26, PAD)
+
+local fishScrollChild = CreateFrame("Frame", nil, fishScrollFrame)
+fishScrollChild:SetSize(1, 1)
+fishScrollFrame:SetScrollChild(fishScrollChild)
+fishScrollFrame:SetScript("OnSizeChanged", function(self, width)
+  fishScrollChild:SetWidth(width)
+end)
+
+local PCT_WIDTH = 30
+local COUNT_WIDTH = 24
+local fishRows = {}
+local function GetFishRow(i)
+  local row = fishRows[i]
+  if row then return row end
+  row = {}
+  local y = -((i - 1) * lineHeight)
+
+  row.pct = fishScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  row.pct:SetPoint("TOPRIGHT", fishScrollChild, "TOPRIGHT", 0, y - 2)
+  row.pct:SetWidth(PCT_WIDTH)
+  row.pct:SetJustifyH("RIGHT")
+  row.pct:SetTextColor(unpack(LABEL_COLOR))
+
+  row.count = fishScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.count:SetPoint("TOPRIGHT", row.pct, "TOPLEFT", 0, 2)
+  row.count:SetWidth(COUNT_WIDTH)
+  row.count:SetJustifyH("RIGHT")
+
+  row.name = fishScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  row.name:SetPoint("TOPLEFT", fishScrollChild, "TOPLEFT", 0, y)
+  row.name:SetPoint("RIGHT", row.count, "LEFT", -4, 0)
+  row.name:SetJustifyH("LEFT")
+  row.name:SetWordWrap(false)
+
+  fishRows[i] = row
+  return row
+end
+
 local FormatCoins
 local FormatGoldOnlyCoins
-  
-  -------- REFRESH PANEL -----
+
+-------- REFRESH PANEL -----
 local function RefreshPanel()
   local fishCounts = FishingStatsDB.fishCounts
   local currentRegionName = Addon.GetCurrentFishingRegion()
   local currentRegionMetrics = Addon.GetRegionDetailData(currentRegionName)
-  -- Clear previous content
-  for i = 1, maxLines do
-    lines[i]:SetText("")
-  end
 
   -- Header
-  lines[1]:SetText(" Fishing Stats (Total)")
-  local total, max, bonus = Addon.GetFishingSkillBonus()
-  lines[2]:SetText(string.format("Fishing Skill: %d (+%d)", total, bonus))
+  local total, _, bonus = Addon.GetFishingSkillBonus()
+  frame.subtitle:SetText(currentRegionMetrics.regionName)
+  frame.skillValue:SetText(string.format("%d |cff999999(+%d)|r", total, bonus))
+  frame.hourlyValue:SetText(FormatGoldOnlyCoins(currentRegionMetrics.estimatedHourlyEarn))
+  frame.totalValue:SetText(GetCoinTextureString(FishingStatsDB.earn))
 
-  lines[3]:SetText(string.format("%s Hourly: %s", currentRegionMetrics.regionName, FormatGoldOnlyCoins(currentRegionMetrics.estimatedHourlyEarn)))
-  lines[4]:SetText(string.format("Total Earn: %s", GetCoinTextureString(FishingStatsDB.earn)))
+  -- Clear previous list content
+  for _, r in ipairs(fishRows) do
+    r.name:SetText("")
+    r.count:SetText("")
+    r.pct:SetText("")
+  end
 
-
-
-  -- Populate rows
-  local row = 5
   -- Sort by count
   local sortedFish = {}
   local totalCount = 0
@@ -93,16 +172,23 @@ local function RefreshPanel()
     totalCount = totalCount + count
   end
   table.sort(sortedFish, function(a, b) return a.count > b.count end)
-  for _, fish in ipairs(sortedFish) do
-    if row > maxLines then break end
-    lines[row]:SetText( string.format("%-20s  × %3d    %d%%", fish.name, fish.count, fish.count / totalCount * 100) )
-    row = row + 1
+
+  local rowCount = #sortedFish
+  for i, fish in ipairs(sortedFish) do
+    local r = GetFishRow(i)
+    r.name:SetText(fish.name)
+    r.count:SetText(fish.count)
+    r.pct:SetText(string.format("%d%%", fish.count / totalCount * 100))
   end
 
-  -- Show an empty-state message if needed
-  if row == 5 then
-    lines[5]:SetText("|cffff0000No data yet|r")
+  -- Empty state
+  if rowCount == 0 then
+    local r = GetFishRow(1)
+    r.name:SetText("|cff808080No data yet|r")
+    rowCount = 1
   end
+
+  fishScrollChild:SetSize(math.max(1, fishScrollFrame:GetWidth()), math.max(1, rowCount * lineHeight))
 
   frame:Show()
 end
@@ -164,12 +250,7 @@ end
 local regionFrame = CreateFrame("Frame", "FishingStatsRegionFrame", UIParent, "BackdropTemplate")
 regionFrame:SetSize(500, 420)
 regionFrame:SetPoint("CENTER", UIParent, "CENTER", 240, 0)
-regionFrame:SetBackdrop({
-  bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-  edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-  tile     = true, tileSize = 32, edgeSize = 32,
-  insets   = { left=10, right=10, top=10, bottom=10 },
-})
+ApplyFlatBackdrop(regionFrame)
 regionFrame:EnableMouse(true)
 regionFrame:SetMovable(true)
 regionFrame:RegisterForDrag("LeftButton")
@@ -181,175 +262,220 @@ regionFrame.selectedRegion = nil
 
 table.insert(UISpecialFrames, "FishingStatsRegionFrame")
 
-regionFrame.title = regionFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
-regionFrame.title:SetPoint("TOP", regionFrame, "TOP", 0, -18)
+local REGION_PAD = 16
+
+-- Header: title, close button, tab row, separator
+regionFrame.title = regionFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+regionFrame.title:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", REGION_PAD, -14)
 regionFrame.title:SetText("Region Earnings")
 
 regionFrame.closeButton = CreateFrame("Button", nil, regionFrame, "UIPanelCloseButton")
-regionFrame.closeButton:SetPoint("TOPRIGHT", regionFrame, "TOPRIGHT", -5, -5)
+regionFrame.closeButton:SetPoint("TOPRIGHT", regionFrame, "TOPRIGHT", -4, -4)
 
-regionFrame.overviewTab = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
-regionFrame.overviewTab:SetSize(110, 24)
-regionFrame.overviewTab:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -48)
-regionFrame.overviewTab:SetText("Overview")
+local function CreateTabButton(text, width)
+  local b = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
+  b:SetSize(width or 90, 22)
+  b:SetText(text)
+  return b
+end
 
-regionFrame.detailsTab = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
-regionFrame.detailsTab:SetSize(110, 24)
-regionFrame.detailsTab:SetPoint("LEFT", regionFrame.overviewTab, "RIGHT", 8, 0)
-regionFrame.detailsTab:SetText("Details")
+regionFrame.overviewTab = CreateTabButton("Overview")
+regionFrame.overviewTab:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", REGION_PAD, -42)
 
-regionFrame.dailyTab = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
-regionFrame.dailyTab:SetSize(110, 24)
-regionFrame.dailyTab:SetPoint("LEFT", regionFrame.detailsTab, "RIGHT", 8, 0)
-regionFrame.dailyTab:SetText("Daily Earn")
+regionFrame.detailsTab = CreateTabButton("Details")
+regionFrame.detailsTab:SetPoint("LEFT", regionFrame.overviewTab, "RIGHT", 4, 0)
 
-regionFrame.refreshPriceButton = CreateFrame("Button", nil, regionFrame, "UIPanelButtonTemplate")
-regionFrame.refreshPriceButton:SetSize(100, 24)
-regionFrame.refreshPriceButton:SetPoint("TOPRIGHT", regionFrame, "TOPRIGHT", -34, -48)
-regionFrame.refreshPriceButton:SetText("Refresh Price")
+regionFrame.dailyTab = CreateTabButton("Daily Earn")
+regionFrame.dailyTab:SetPoint("LEFT", regionFrame.detailsTab, "RIGHT", 4, 0)
 
-regionFrame.overviewContent = CreateFrame("Frame", nil, regionFrame)
-regionFrame.overviewContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
-regionFrame.overviewContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
+regionFrame.refreshPriceButton = CreateTabButton("Refresh Price", 100)
+regionFrame.refreshPriceButton:SetPoint("TOPRIGHT", regionFrame, "TOPRIGHT", -REGION_PAD, -42)
 
-regionFrame.detailsContent = CreateFrame("Frame", nil, regionFrame)
-regionFrame.detailsContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
-regionFrame.detailsContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
+local function AddHLine(parent, yOffset, leftInset, rightInset)
+  local line = parent:CreateTexture(nil, "ARTWORK")
+  line:SetColorTexture(1, 1, 1, 0.12)
+  line:SetHeight(1)
+  line:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset or 0, yOffset)
+  line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(rightInset or 0), yOffset)
+  return line
+end
 
-regionFrame.dailyContent = CreateFrame("Frame", nil, regionFrame)
-regionFrame.dailyContent:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", 18, -82)
-regionFrame.dailyContent:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -18, 18)
+AddHLine(regionFrame, -72, REGION_PAD, REGION_PAD)
+
+local function CreateContent()
+  local c = CreateFrame("Frame", nil, regionFrame)
+  c:SetPoint("TOPLEFT", regionFrame, "TOPLEFT", REGION_PAD, -82)
+  c:SetPoint("BOTTOMRIGHT", regionFrame, "BOTTOMRIGHT", -REGION_PAD, 14)
+  return c
+end
+
+regionFrame.overviewContent = CreateContent()
+regionFrame.detailsContent = CreateContent()
+regionFrame.dailyContent = CreateContent()
 
 regionFrame.regionOptions = {}
 
-regionFrame.overviewHeaders = {}
-local overviewHeaderConfig = {
-  { key = "region", text = "Region", x = 0 },
-  { key = "count", text = "Catches", x = 120 },
-  { key = "total", text = "Total Earn", x = 200 },
-  { key = "hourly", text = "Hourly Earn", x = 325 },
-}
+------------------------------------------------------------
+-- Generic scrollable table: grey header row + separator, zebra-striped rows,
+-- first column left-aligned, numeric columns right-aligned.
+-- Column spec: { key, text, x = left edge, width } for left-aligned columns,
+--              { key, text, right = right edge } for right-aligned columns.
+------------------------------------------------------------
+local ROW_HEIGHT = 20
 
-for _, column in ipairs(overviewHeaderConfig) do
-  local header = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  header:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", column.x, 0)
-  header:SetText(column.text)
-  regionFrame.overviewHeaders[column.key] = header
+local function CreateDataTable(parent, scrollName, columns, topOffset, emptyText)
+  local t = { columns = columns, rows = {} }
+
+  for _, col in ipairs(columns) do
+    local h = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    h:SetTextColor(unpack(LABEL_COLOR))
+    if col.right then
+      h:SetPoint("TOPRIGHT", parent, "TOPLEFT", col.right, topOffset)
+    else
+      h:SetPoint("TOPLEFT", parent, "TOPLEFT", col.x, topOffset)
+    end
+    h:SetText(col.text)
+  end
+  AddHLine(parent, topOffset - 15)
+
+  t.scroll = CreateFrame("ScrollFrame", scrollName, parent, "UIPanelScrollFrameTemplate")
+  t.scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, topOffset - 20)
+  t.scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -26, 0)
+
+  t.child = CreateFrame("Frame", nil, t.scroll)
+  t.child:SetSize(1, 1)
+  t.scroll:SetScrollChild(t.child)
+  t.scroll:SetScript("OnSizeChanged", function(_, width) t.child:SetWidth(width) end)
+
+  t.empty = parent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+  t.empty:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, topOffset - 28)
+  t.empty:SetText(emptyText)
+
+  return t
 end
 
-regionFrame.overviewRows = {}
-for i = 1, 12 do
-  local row = {}
-  row.region = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.region:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 0, -(20 + (i - 1) * 22))
-  row.count = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.count:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 120, -(20 + (i - 1) * 22))
-  row.total = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.total:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 200, -(20 + (i - 1) * 22))
-  row.hourly = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  row.hourly:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 325, -(20 + (i - 1) * 22))
-  regionFrame.overviewRows[i] = row
+local function GetTableRow(t, i)
+  local row = t.rows[i]
+  if row then return row end
+
+  row = {}
+  local top = -((i - 1) * ROW_HEIGHT)
+  local mid = top - ROW_HEIGHT / 2
+
+  if i % 2 == 0 then
+    row.stripe = t.child:CreateTexture(nil, "BACKGROUND")
+    row.stripe:SetColorTexture(1, 1, 1, 0.04)
+    row.stripe:SetHeight(ROW_HEIGHT)
+    row.stripe:SetPoint("TOPLEFT", t.child, "TOPLEFT", 0, top)
+    row.stripe:SetPoint("TOPRIGHT", t.child, "TOPRIGHT", 0, top)
+  end
+
+  for _, col in ipairs(t.columns) do
+    local fs = t.child:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    fs:SetWordWrap(false)
+    if col.right then
+      fs:SetPoint("RIGHT", t.child, "TOPLEFT", col.right, mid)
+      fs:SetJustifyH("RIGHT")
+    else
+      fs:SetPoint("LEFT", t.child, "TOPLEFT", col.x, mid)
+      fs:SetWidth(col.width)
+      fs:SetJustifyH("LEFT")
+    end
+    if col.dim then fs:SetTextColor(unpack(LABEL_COLOR)) end
+    row[col.key] = fs
+  end
+
+  t.rows[i] = row
+  return row
 end
 
-regionFrame.overviewEmptyText = regionFrame.overviewContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-regionFrame.overviewEmptyText:SetPoint("TOPLEFT", regionFrame.overviewContent, "TOPLEFT", 0, -28)
-regionFrame.overviewEmptyText:SetText("No regional data recorded yet.")
+-- fillRow(row, entry) sets the text of each column for one data entry.
+local function FillDataTable(t, data, fillRow)
+  for _, row in ipairs(t.rows) do
+    for _, col in ipairs(t.columns) do
+      row[col.key]:SetText("")
+    end
+    if row.stripe then row.stripe:Hide() end
+  end
+  t.scroll:SetVerticalScroll(0)
 
-regionFrame.detailsTitle = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-regionFrame.detailsTitle:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, 0)
-regionFrame.detailsTitle:SetText("Region Details")
+  if #data == 0 then
+    t.empty:Show()
+    t.scroll:Hide()
+    return
+  end
 
-regionFrame.dropdownLabel = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-regionFrame.dropdownLabel:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -28)
-regionFrame.dropdownLabel:SetText("Select Region")
+  t.empty:Hide()
+  t.scroll:Show()
+  for i, entry in ipairs(data) do
+    local row = GetTableRow(t, i)
+    if row.stripe then row.stripe:Show() end
+    fillRow(row, entry)
+  end
+  t.child:SetSize(math.max(1, t.scroll:GetWidth()), #data * ROW_HEIGHT)
+end
 
+------------------------------------------------------------
+-- Overview tab
+------------------------------------------------------------
+regionFrame.overviewTable = CreateDataTable(regionFrame.overviewContent, "FishingStatsOverviewScrollFrame", {
+  { key = "region", text = "Region",      x = 4, width = 150 },
+  { key = "count",  text = "Catches",     right = 220 },
+  { key = "total",  text = "Total Earn",  right = 330 },
+  { key = "hourly", text = "Hourly Earn", right = 438 },
+}, 0, "No regional data recorded yet.")
+
+------------------------------------------------------------
+-- Details tab: region dropdown + clear button, 4 stat blocks, item table
+------------------------------------------------------------
 regionFrame.dropdown = CreateFrame("Frame", "FishingStatsRegionDropdown", regionFrame.detailsContent, "UIDropDownMenuTemplate")
-regionFrame.dropdown:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", -16, -42)
+regionFrame.dropdown:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", -16, 4)
 
 regionFrame.clearRegionButton = CreateFrame("Button", nil, regionFrame.detailsContent, "UIPanelButtonTemplate")
 regionFrame.clearRegionButton:SetSize(100, 22)
-regionFrame.clearRegionButton:SetPoint("TOPRIGHT", regionFrame.detailsContent, "TOPRIGHT", -6, -34)
+regionFrame.clearRegionButton:SetPoint("TOPRIGHT", regionFrame.detailsContent, "TOPRIGHT", 0, -2)
 regionFrame.clearRegionButton:SetText("Clear Region")
 
-regionFrame.detailsSummary = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-regionFrame.detailsSummary:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -78)
-regionFrame.detailsSummary:SetJustifyH("LEFT")
-
-regionFrame.detailsHeaders = {}
-local detailsHeaderConfig = {
-  { key = "item", text = "Item", x = 0 },
-  { key = "count", text = "Count", x = 100 },
-  { key = "percent", text = "%", x = 150 },
-  { key = "total", text = "Total Earn", x = 220 },
-  { key = "hourly", text = "Hourly Earn", x = 305 },
+regionFrame.detailStats = {}
+local detailStatConfig = {
+  { key = "count",  text = "Catches" },
+  { key = "types",  text = "Item Types" },
+  { key = "total",  text = "Total Earn" },
+  { key = "hourly", text = "Hourly Earn" },
 }
+for i, stat in ipairs(detailStatConfig) do
+  local x = 4 + (i - 1) * 117
+  local lbl = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  lbl:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", x, -38)
+  lbl:SetTextColor(unpack(LABEL_COLOR))
+  lbl:SetText(stat.text)
 
-for _, column in ipairs(detailsHeaderConfig) do
-  local header = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  header:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", column.x, -98)
-  header:SetText(column.text)
-  regionFrame.detailsHeaders[column.key] = header
+  local value = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  value:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -3)
+  regionFrame.detailStats[stat.key] = value
 end
 
-regionFrame.detailsScrollFrame = CreateFrame("ScrollFrame", "FishingStatsRegionDetailsScrollFrame", regionFrame.detailsContent, "UIPanelScrollFrameTemplate")
-regionFrame.detailsScrollFrame:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -116)
-regionFrame.detailsScrollFrame:SetPoint("BOTTOMRIGHT", regionFrame.detailsContent, "BOTTOMRIGHT", -28, 6)
+regionFrame.detailsTable = CreateDataTable(regionFrame.detailsContent, "FishingStatsRegionDetailsScrollFrame", {
+  { key = "item",    text = "Item",        x = 4, width = 130 },
+  { key = "count",   text = "Count",       right = 180 },
+  { key = "percent", text = "%",           right = 230, dim = true },
+  { key = "total",   text = "Total Earn",  right = 334 },
+  { key = "hourly",  text = "Hourly Earn", right = 438 },
+}, -80, "No regional data recorded yet.")
 
-regionFrame.detailsScrollChild = CreateFrame("Frame", nil, regionFrame.detailsScrollFrame)
-regionFrame.detailsScrollChild:SetSize(430, 1)
-regionFrame.detailsScrollFrame:SetScrollChild(regionFrame.detailsScrollChild)
+------------------------------------------------------------
+-- Daily tab
+------------------------------------------------------------
+regionFrame.dailyTable = CreateDataTable(regionFrame.dailyContent, "FishingStatsDailyScrollFrame", {
+  { key = "date",  text = "Date",       x = 4, width = 140 },
+  { key = "count", text = "Catches",    right = 300 },
+  { key = "earn",  text = "Total Earn", right = 438 },
+}, 0, "No daily data recorded yet.")
 
-regionFrame.detailRows = {}
-
-local function EnsureDetailRows(count)
-  for i = #regionFrame.detailRows + 1, count do
-    local row = {}
-    local yOffset = -((i - 1) * 20)
-    row.item = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.item:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 0, yOffset)
-    row.count = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.count:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 100, yOffset)
-    row.percent = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.percent:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 150, yOffset)
-    row.total = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.total:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 220, yOffset)
-    row.hourly = regionFrame.detailsScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.hourly:SetPoint("TOPLEFT", regionFrame.detailsScrollChild, "TOPLEFT", 305, yOffset)
-    regionFrame.detailRows[i] = row
-  end
-end
-
-regionFrame.detailsEmptyText = regionFrame.detailsContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-regionFrame.detailsEmptyText:SetPoint("TOPLEFT", regionFrame.detailsContent, "TOPLEFT", 0, -78)
-regionFrame.detailsEmptyText:SetText("No regional data recorded yet.")
-
--- Daily content UI
-local dailyHeaderConfig = {
-  { key = "date",  text = "Date",       x = 0   },
-  { key = "count", text = "Catches",    x = 160 },
-  { key = "earn",  text = "Total Earn", x = 240 },
-}
-regionFrame.dailyHeaders = {}
-for _, col in ipairs(dailyHeaderConfig) do
-  local h = regionFrame.dailyContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  h:SetPoint("TOPLEFT", regionFrame.dailyContent, "TOPLEFT", col.x, 0)
-  h:SetText(col.text)
-  regionFrame.dailyHeaders[col.key] = h
-end
-
-regionFrame.dailyScrollFrame = CreateFrame("ScrollFrame", "FishingStatsDailyScrollFrame", regionFrame.dailyContent, "UIPanelScrollFrameTemplate")
-regionFrame.dailyScrollFrame:SetPoint("TOPLEFT",     regionFrame.dailyContent, "TOPLEFT",     0,   -20)
-regionFrame.dailyScrollFrame:SetPoint("BOTTOMRIGHT", regionFrame.dailyContent, "BOTTOMRIGHT", -28,  6)
-
-regionFrame.dailyScrollChild = CreateFrame("Frame", nil, regionFrame.dailyScrollFrame)
-regionFrame.dailyScrollChild:SetSize(430, 1)
-regionFrame.dailyScrollFrame:SetScrollChild(regionFrame.dailyScrollChild)
-
-regionFrame.dailyRows = {}
-
-regionFrame.dailyEmptyText = regionFrame.dailyContent:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-regionFrame.dailyEmptyText:SetPoint("TOPLEFT", regionFrame.dailyContent, "TOPLEFT", 0, -28)
-regionFrame.dailyEmptyText:SetText("No daily data recorded yet.")
+-- Scroll frames (for the ElvUI skin)
+regionFrame.overviewScrollFrame = regionFrame.overviewTable.scroll
+regionFrame.detailsScrollFrame = regionFrame.detailsTable.scroll
+regionFrame.dailyScrollFrame = regionFrame.dailyTable.scroll
 
 local function SetSelectedRegion(regionName)
   regionFrame.selectedRegion = regionName
@@ -420,9 +546,26 @@ local function SetRegionTab(tabName)
   regionFrame.detailsContent:SetShown(tabName == "details")
   regionFrame.dailyContent:SetShown(tabName == "daily")
 
-  regionFrame.overviewTab:SetEnabled(tabName ~= "overview")
-  regionFrame.detailsTab:SetEnabled(tabName ~= "details")
-  regionFrame.dailyTab:SetEnabled(tabName ~= "daily")
+  local tabs = {
+    overview = regionFrame.overviewTab,
+    details  = regionFrame.detailsTab,
+    daily    = regionFrame.dailyTab,
+  }
+  for key, tab in pairs(tabs) do
+    local active = key == tabName
+    if regionFrame.elvSkinned then
+      -- ElvUI style: keep tabs clickable and mark the active one with the
+      -- ElvUI accent (value) color border instead of a greyed-out button.
+      tab:SetEnabled(true)
+      if active then
+        tab:SetBackdropBorderColor(unpack(regionFrame.elvAccentColor))
+      else
+        tab:SetBackdropBorderColor(unpack(regionFrame.elvBorderColor))
+      end
+    else
+      tab:SetEnabled(not active)
+    end
+  end
 end
 
 local function RefreshRegionOverview()
@@ -435,133 +578,54 @@ local function RefreshRegionOverview()
     SetSelectedRegion(regionFrame.selectedRegion)
   end
 
-  for _, row in ipairs(regionFrame.overviewRows) do
-    row.region:SetText("")
-    row.count:SetText("")
-    row.total:SetText("")
-    row.hourly:SetText("")
-  end
-
-  if #overviewData == 0 then
-    regionFrame.overviewEmptyText:Show()
-    return
-  end
-
-  regionFrame.overviewEmptyText:Hide()
-
-  for i, entry in ipairs(overviewData) do
-    local row = regionFrame.overviewRows[i]
-    if not row then
-      break
-    end
-
+  FillDataTable(regionFrame.overviewTable, overviewData, function(row, entry)
     row.region:SetText(entry.regionName)
     row.count:SetText(tostring(entry.totalCount))
     row.total:SetText(FormatCoins(entry.totalEarn))
     row.hourly:SetText(FormatCoins(entry.estimatedHourlyEarn))
-  end
+  end)
+end
+
+local function SetDetailStats(count, types, total, hourly)
+  regionFrame.detailStats.count:SetText(count)
+  regionFrame.detailStats.types:SetText(types)
+  regionFrame.detailStats.total:SetText(total)
+  regionFrame.detailStats.hourly:SetText(hourly)
 end
 
 RefreshRegionDetails = function()
   local selectedRegion = regionFrame.selectedRegion
+  local metrics = selectedRegion and Addon.GetRegionDetailData(selectedRegion)
+  local items = (metrics and metrics.totalCount > 0 and metrics.items) or {}
 
-  for _, row in ipairs(regionFrame.detailRows) do
-    row.item:SetText("")
-    row.count:SetText("")
-    row.percent:SetText("")
-    row.total:SetText("")
-    row.hourly:SetText("")
-  end
-  regionFrame.detailsScrollFrame:SetVerticalScroll(0)
-
-  if not selectedRegion then
-    regionFrame.detailsEmptyText:Show()
-    regionFrame.detailsSummary:Hide()
-    regionFrame.detailsScrollFrame:Hide()
-    regionFrame.detailsTitle:SetText("Region Details")
+  if #items == 0 then
+    SetDetailStats("-", "-", "-", "-")
     regionFrame.clearRegionButton:Disable()
-    return
+  else
+    SetDetailStats(
+      tostring(metrics.totalCount),
+      tostring(#items),
+      FormatCoins(metrics.totalEarn),
+      FormatCoins(metrics.estimatedHourlyEarn)
+    )
+    regionFrame.clearRegionButton:Enable()
   end
 
-  local metrics = Addon.GetRegionDetailData(selectedRegion)
-  if not metrics or metrics.totalCount == 0 then
-    regionFrame.detailsEmptyText:Show()
-    regionFrame.detailsSummary:Hide()
-    regionFrame.detailsScrollFrame:Hide()
-    regionFrame.detailsTitle:SetText(selectedRegion)
-    regionFrame.clearRegionButton:Disable()
-    return
-  end
-
-  regionFrame.detailsEmptyText:Hide()
-  regionFrame.detailsSummary:Show()
-  regionFrame.detailsScrollFrame:Show()
-  regionFrame.detailsTitle:SetText(metrics.regionName)
-  regionFrame.clearRegionButton:Enable()
-  regionFrame.detailsSummary:SetText(string.format(
-    "Catches: %d   Item Types: %d   Total Earn: %s   Hourly Earn: %s",
-    metrics.totalCount,
-    #(metrics.items or {}),
-    FormatCoins(metrics.totalEarn),
-    FormatCoins(metrics.estimatedHourlyEarn)
-  ))
-
-  EnsureDetailRows(#(metrics.items or {}))
-  regionFrame.detailsScrollChild:SetHeight(math.max(1, #(metrics.items or {}) * 20))
-
-  for i, entry in ipairs(metrics.items or {}) do
-    local row = regionFrame.detailRows[i]
-
+  FillDataTable(regionFrame.detailsTable, items, function(row, entry)
     row.item:SetText(entry.itemName)
     row.count:SetText(tostring(entry.count))
     row.percent:SetText(string.format("%.1f%%", entry.catchPercent))
     row.total:SetText(FormatCoins(entry.totalEarn))
     row.hourly:SetText(FormatCoins(entry.estimatedHourlyEarn))
-  end
-end
-
-local function EnsureDailyRows(count)
-  for i = #regionFrame.dailyRows + 1, count do
-    local yOffset = -((i - 1) * 22)
-    local row = {}
-    row.date  = regionFrame.dailyScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.date:SetPoint("TOPLEFT", regionFrame.dailyScrollChild, "TOPLEFT", 0, yOffset)
-    row.count = regionFrame.dailyScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.count:SetPoint("TOPLEFT", regionFrame.dailyScrollChild, "TOPLEFT", 160, yOffset)
-    row.earn  = regionFrame.dailyScrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    row.earn:SetPoint("TOPLEFT", regionFrame.dailyScrollChild, "TOPLEFT", 240, yOffset)
-    regionFrame.dailyRows[i] = row
-  end
+  end)
 end
 
 local function RefreshDailyContent()
-  local data = Addon.GetDailyEarnData()
-
-  for _, row in ipairs(regionFrame.dailyRows) do
-    row.date:SetText("")
-    row.count:SetText("")
-    row.earn:SetText("")
-  end
-  regionFrame.dailyScrollFrame:SetVerticalScroll(0)
-
-  if #data == 0 then
-    regionFrame.dailyEmptyText:Show()
-    regionFrame.dailyScrollFrame:Hide()
-    return
-  end
-
-  regionFrame.dailyEmptyText:Hide()
-  regionFrame.dailyScrollFrame:Show()
-
-  EnsureDailyRows(#data)
-  regionFrame.dailyScrollChild:SetHeight(math.max(1, #data * 22))
-
-  for i, entry in ipairs(data) do
-    local row = regionFrame.dailyRows[i]
+  FillDataTable(regionFrame.dailyTable, Addon.GetDailyEarnData(), function(row, entry)
     row.date:SetText(entry.dateKey)
     row.count:SetText(tostring(entry.totalCount))
     row.earn:SetText(FormatCoins(entry.totalEarn))
-  end
+  end)
 end
 
 RefreshRegionWindow = function()
@@ -737,83 +801,6 @@ frame:SetScript("OnEvent", function(self, event, ...)
   end
 end)
 
-------------------------------------------------------------
--- Buff button creation
-------------------------------------------------------------
-frame.buffButtons = {}
-
-for idx, itemID in ipairs(buffItemIDs) do
-  --------------------------------------------------------
-  -- Position: row and column
-  --------------------------------------------------------
-  local row = math.floor((idx-1) / MAX_COL)    -- 0,1,2…
-  local col = (idx-1) % MAX_COL                -- 0 ~ 3
-  local x = 10 + col * (BTN_SIZE + BTN_PADDING)
-  local y = 10 + row * (BTN_SIZE + BTN_PADDING)
-
-  --------------------------------------------------------
-  -- SecureActionButton
-  --------------------------------------------------------
-  local name, _, _, _, _, _, _, _, _, icon = GetItemInfo(itemID)
-  local btn = CreateFrame("Button",
-                          "FishingStatsBuffBtn"..itemID,
-                          frame,
-                          "SecureActionButtonTemplate")
-  btn:SetSize(BTN_SIZE, BTN_SIZE)
-  btn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", x, y)
-
-  name = name or tostring(itemID)
-  btn:SetAttribute("type", "item")
-  btn:SetAttribute("item", name)
-  btn:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
-
-  --------------------------------------------------------
-  -- Background icon
-  --------------------------------------------------------
-  btn.icon = btn:CreateTexture(nil, "BACKGROUND")
-  btn.icon:SetAllPoints(btn)
-  if icon then btn.icon:SetTexture(icon) end
-
-  --------------------------------------------------------
-  -- Bottom-right count text
-  --------------------------------------------------------
-  btn.count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-  btn.count:SetPoint("BOTTOMRIGHT", -2, 2)
-  btn.count:SetText("")           -- Hidden by default
-
-  --------------------------------------------------------
-  -- Tooltip
-  --------------------------------------------------------
-  btn:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetItemByID(itemID)
-  end)
-  btn:SetScript("OnLeave", GameTooltip_Hide)
-
-  frame.buffButtons[itemID] = btn
-end
-
--- Refresh counts: show numbers only when quantity > 1
-------------------------------------------------------------
-local function RefreshBuffCounts()
-  for itemID, btn in pairs(frame.buffButtons) do
-    local qty = GetItemCount(itemID, true)
-    if qty and qty > 1 then
-      btn.count:SetText(qty)
-      btn.count:Show()
-    else
-      btn.count:Hide()
-    end
-  end
-end
-
--- Event-driven refresh
-------------------------------------------------------------
-local f = CreateFrame("Frame")
-f:RegisterEvent("BAG_UPDATE_DELAYED")   -- Batch refresh after bag changes
-f:RegisterEvent("PLAYER_ENTERING_WORLD")
-f:SetScript("OnEvent", RefreshBuffCounts)
-
 
 -- Define the /fs command
 SLASH_FS1 = "/fs"
@@ -916,3 +903,65 @@ function BuildSettingsPanel()
   Settings.RegisterAddOnCategory(category)
   Addon.settingsCategory = category
 end
+
+------------------------------------------------------------
+-- ElvUI skin
+-- If ElvUI is loaded, re-skin our frames with ElvUI's own skin API so they
+-- follow the user's ElvUI theme (colors, border style, pixel mode).
+-- Without ElvUI the flat backdrop from ApplyFlatBackdrop() is kept.
+------------------------------------------------------------
+local function ApplyElvUISkin()
+  if regionFrame.elvSkinned or not ElvUI then return end
+  local E = unpack(ElvUI)
+  local S = E and E.Skins
+  if not (S and E.media and E.media.rgbvaluecolor and S.HandleButton) then return end
+
+  local function HandleScrollFrame(sf)
+    local bar = sf.ScrollBar or (sf:GetName() and _G[sf:GetName() .. "ScrollBar"])
+    if bar then S:HandleScrollBar(bar) end
+  end
+
+  -- Windows
+  frame:SetTemplate("Transparent")
+  regionFrame:SetTemplate("Transparent")
+  frame.title:SetTextColor(unpack(E.media.rgbvaluecolor))
+  regionFrame.title:SetTextColor(unpack(E.media.rgbvaluecolor))
+  S:HandleCloseButton(regionFrame.closeButton)
+
+  -- Buttons
+  for _, b in ipairs({
+    regionFrame.overviewTab, regionFrame.detailsTab, regionFrame.dailyTab,
+    regionFrame.refreshPriceButton, regionFrame.clearRegionButton,
+    overviewButton, currentRegionButton, dailyButton,
+  }) do
+    S:HandleButton(b)
+  end
+
+  -- Dropdown & scroll bars
+  S:HandleDropDownBox(regionFrame.dropdown, 200, nil, true)
+  HandleScrollFrame(fishScrollFrame)
+  HandleScrollFrame(regionFrame.overviewScrollFrame)
+  HandleScrollFrame(regionFrame.detailsScrollFrame)
+  HandleScrollFrame(regionFrame.dailyScrollFrame)
+
+  -- Active-tab highlight (see SetRegionTab). ElvUI resets the border color
+  -- on mouse leave, so re-apply our highlight after its OnLeave hook.
+  regionFrame.elvAccentColor = { unpack(E.media.rgbvaluecolor) }
+  regionFrame.elvBorderColor = { unpack(E.media.bordercolor) }
+  regionFrame.elvSkinned = true
+  for _, tab in ipairs({ regionFrame.overviewTab, regionFrame.detailsTab, regionFrame.dailyTab }) do
+    tab:HookScript("OnLeave", function() SetRegionTab(regionFrame.activeTab) end)
+  end
+  SetRegionTab(regionFrame.activeTab or "overview")
+end
+
+local skinFrame = CreateFrame("Frame")
+skinFrame:RegisterEvent("PLAYER_LOGIN")
+skinFrame:SetScript("OnEvent", function(self)
+  self:UnregisterAllEvents()
+  -- Wait one frame so ElvUI has finished its own PLAYER_LOGIN initialization.
+  C_Timer.After(0, function()
+    local ok, err = pcall(ApplyElvUISkin)
+    if not ok then DebugPrint("ElvUI skin failed:", err) end
+  end)
+end)
