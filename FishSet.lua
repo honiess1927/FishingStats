@@ -147,9 +147,18 @@ Set.addRange(FISH_SET, 212664, 212669)
 Set.addList(FISH_SET, {218337, 213611})
 
 -- 12.0
-Set.addRange(FISH_SET, 238365, 238384) 
+Set.addRange(FISH_SET, 238365, 238384)
 -- Ore
 Set.addRange(FISH_SET, 237359, 237364)
+
+-- 12.1 (The Coiled Isle) - the 14 fish from the "Angler of The Coiled Isle" achievement
+-- Spotted Killifish, Toxic Tlhapi, Ula'tek Snakehead, Sulfurous Sludgefish,
+-- Coiled Stargorger, Dirty Darter, Blightswarmer, Polluted Puffer,
+-- + venom-fishing proc catches: Pristine Polygon, Beached Asteroid, Bulbous Benthos
+Set.addRange(FISH_SET, 274587, 274597)
+-- Oozing Goby, Giggling Skull, Grotesque Sturgeon, Many-Eyed Flounder,
+-- Twin-Headed Snipefish, Loathsome Anglerfish
+Set.addList(FISH_SET, {279091, 279093, 279094, 279100, 279105, 279106})
 
 print("Fish set loaded")
 

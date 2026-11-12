@@ -6,6 +6,13 @@
 -- ------------- Configuration -------------
 local name, Addon = ...
 
+-- The global item APIs were deprecated in favor of C_Item and removed in newer
+-- clients; prefer C_Item and fall back to the old globals if present.
+local GetItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+local GetItemCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+local GetCoinTextureString = (C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString)
+  or GetCoinTextureString or GetMoneyString
+
 -- ------------- Debug logging -------------
 -- Toggle with /fsdebug. Prints go out with a [FS-DEBUG] prefix so they're easy to
 -- spot/filter in chat while we track down the catch-detection issue.
