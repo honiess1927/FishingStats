@@ -702,6 +702,25 @@ dailyButton:SetScript("OnClick", function()
   regionFrame:Show()
 end)
 
+-- Lure macro: click or drag to put the auto-lure macro on the cursor, then
+-- drop it on an action bar (see Lure.lua).
+local lureButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+lureButton:SetSize(72, 24)
+lureButton:SetPoint("TOPLEFT", dailyButton, "BOTTOMLEFT", 0, -6)
+lureButton:SetText("Lure")
+lureButton:RegisterForDrag("LeftButton")
+lureButton:SetScript("OnClick", Addon.PickupLureMacro)
+lureButton:SetScript("OnDragStart", Addon.PickupLureMacro)
+lureButton:HookScript("OnEnter", function(self)
+  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+  GameTooltip:SetText("Lure Macro")
+  GameTooltip:AddLine("Drag (or click) to place it on an action bar.", 1, 1, 1)
+  GameTooltip:AddLine("Uses the best lure you have:", 0.6, 0.6, 0.6)
+  GameTooltip:AddLine("尖刺钉螺 > 扭动的蠕行虫 > 纳特的饮酒帽", 0.6, 0.6, 0.6)
+  GameTooltip:Show()
+end)
+lureButton:HookScript("OnLeave", GameTooltip_Hide)
+
 
 -- Records one caught item (fish, ore, junk, misc...) from a fishing catch.
 -- `link` is a full item hyperlink so GetItemInfo works even before the item is
@@ -932,7 +951,7 @@ local function ApplyElvUISkin()
   for _, b in ipairs({
     regionFrame.overviewTab, regionFrame.detailsTab, regionFrame.dailyTab,
     regionFrame.refreshPriceButton, regionFrame.clearRegionButton,
-    overviewButton, currentRegionButton, dailyButton,
+    overviewButton, currentRegionButton, dailyButton, lureButton,
   }) do
     S:HandleButton(b)
   end
